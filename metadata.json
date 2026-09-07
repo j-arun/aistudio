@@ -1,0 +1,10 @@
+{
+  "name": "Rooster Astro Analytical Tool",
+  "description": "A private, zero-ingress, highly secure desktop application for advanced BPHS astrological research, chart parsing, and comparative multi-LLM reasoning.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
