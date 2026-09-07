@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { DivisionalChartId, DivisionalChart } from '../types';
 import {
   DIVISIONAL_CHARTS,
+  GRAHA_COORDINATES,
   ASHTAKAVARGA_DATA,
   INDIVIDUAL_BINDU_POINTS,
   SHADBALA_DATA,
@@ -10,6 +11,11 @@ import {
 } from '../data/canonicalHoroscope';
 import { LeftPanel } from './LeftPanel';
 import { SouthIndianChart } from './SouthIndianChart';
+import {
+  calculateGrahaDivisionalSign,
+  SIGN_NAMES_EN,
+  SIGN_NAMES_TA,
+} from '../utils/bphsEngine';
 import {
   Grid,
   Sparkles,
@@ -22,6 +28,7 @@ import {
   PanelLeftOpen,
   ChevronsDown,
   ChevronsUp,
+  Calculator,
 } from 'lucide-react';
 
 export const StudioView: React.FC = () => {
@@ -33,6 +40,7 @@ export const StudioView: React.FC = () => {
   const [showLeftPanel, setShowLeftPanel] = useState(true);
   const [isChartSectionOpen, setIsChartSectionOpen] = useState(true);
   const [isMatrixSectionOpen, setIsMatrixSectionOpen] = useState(true);
+  const [showBphsMath, setShowBphsMath] = useState(false);
 
   const currentChart: DivisionalChart =
     DIVISIONAL_CHARTS.find((c) => c.id === selectedChartId) || DIVISIONAL_CHARTS[0];
@@ -173,6 +181,71 @@ export const StudioView: React.FC = () => {
                   selectedChartId={selectedChartId}
                   onSelectDivisional={(id) => setSelectedChartId(id)}
                 />
+
+                {/* BPHS Mathematical Derivation Audit Bar */}
+                <div className="mt-1 bg-slate-950/70 border border-amber-900/30 rounded-xl p-3 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calculator className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-amber-300 font-mono">
+                        BPHS Mathematical Engine: {currentChart.id} ({currentChart.name})
+                      </span>
+                      <span className="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-700/40 font-mono">
+                        100% Calculated from Sphutam
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => setShowBphsMath(!showBphsMath)}
+                      className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-[11px] font-mono text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors"
+                    >
+                      {showBphsMath ? 'Hide Math Derivations' : 'View BPHS Mathematical Proof'}
+                      {showBphsMath ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+
+                  {showBphsMath && (
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full text-[11px] font-mono border-collapse text-left">
+                        <thead>
+                          <tr className="border-b border-amber-900/40 text-slate-400">
+                            <th className="py-1.5 px-2">Graha</th>
+                            <th className="py-1.5 px-2">D1 Longitude</th>
+                            <th className="py-1.5 px-2">Nakshatra Pada</th>
+                            <th className="py-1.5 px-2">BPHS Mathematical Rule</th>
+                            <th className="py-1.5 px-2">Result Sign ({currentChart.id})</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {GRAHA_COORDINATES.map((graha) => {
+                            const { signIndex, rule } = calculateGrahaDivisionalSign(graha, selectedChartId);
+                            const signTa = SIGN_NAMES_TA[signIndex];
+                            const signEn = SIGN_NAMES_EN[signIndex];
+                            return (
+                              <tr key={graha.id} className="hover:bg-slate-900/50">
+                                <td className="py-1.5 px-2 font-bold text-amber-300">
+                                  {graha.tamilName} ({graha.shortName})
+                                </td>
+                                <td className="py-1.5 px-2 text-slate-300">
+                                  {graha.tamilSign} {graha.formattedLongitude}
+                                </td>
+                                <td className="py-1.5 px-2 text-slate-400">
+                                  {graha.nakshatraTamil} - {graha.pada}
+                                </td>
+                                <td className="py-1.5 px-2 text-amber-200/90 text-[10px]">
+                                  {rule}
+                                </td>
+                                <td className="py-1.5 px-2 font-bold text-emerald-400">
+                                  {signTa} ({signEn})
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
