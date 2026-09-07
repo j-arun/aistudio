@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Server,
   Key,
@@ -35,6 +35,11 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
   onClose,
 }) => {
   const [formData, setFormData] = useState<InjectedLlmSettings>(settings);
+
+  // Sync state if external settings change
+  useEffect(() => {
+    setFormData(settings);
+  }, [settings]);
   const [showPrimaryKey, setShowPrimaryKey] = useState(false);
   const [showSecondaryKey, setShowSecondaryKey] = useState(false);
   const [showPersonalKey, setShowPersonalKey] = useState(false);
@@ -534,142 +539,369 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
         </div>
 
         {formData.secondary.enabled ? (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-            {/* Secondary Provider */}
-            <div className="md:col-span-4 flex flex-col gap-1">
-              <label className="text-xs font-mono text-slate-300 font-semibold">Secondary Provider:</label>
-              <select
-                value={formData.secondary.provider}
-                onChange={(e) => {
-                  const prov = e.target.value as any;
-                  handleSecondaryChange('provider', prov);
-                  if (prov === 'openai') {
-                    handleSecondaryChange('url', 'https://api.openai.com/v1/chat/completions');
-                    handleSecondaryChange('model', 'o3-mini');
-                  } else if (prov === 'anthropic') {
-                    handleSecondaryChange('url', 'https://api.anthropic.com/v1/messages');
-                    handleSecondaryChange('model', 'claude-3-5-sonnet-20241022');
-                  } else if (prov === 'groq') {
-                    handleSecondaryChange('url', 'https://api.groq.com/openai/v1/chat/completions');
-                    handleSecondaryChange('model', 'llama-3.3-70b-versatile');
-                  } else if (prov === 'openrouter') {
-                    handleSecondaryChange('url', 'https://openrouter.ai/api/v1/chat/completions');
-                    handleSecondaryChange('model', 'deepseek/deepseek-r1');
-                  }
-                }}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-blue-200 text-xs font-mono focus:outline-none"
-              >
-                <option value="openai">OpenAI (o3-mini / gpt-4o)</option>
-                <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
-                <option value="groq">Groq High-Speed (Llama 3.3)</option>
-                <option value="openrouter">OpenRouter (DeepSeek R1 / Any)</option>
-                <option value="custom">Custom Endpoint</option>
-              </select>
-            </div>
-
-            {/* Model Identifier */}
-            <div className="md:col-span-4 flex flex-col gap-1">
-              <label className="text-xs font-mono text-slate-300 font-semibold">Secondary Model Identifier:</label>
-              <input
-                type="text"
-                value={formData.secondary.model}
-                onChange={(e) => handleSecondaryChange('model', e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-slate-200 text-xs font-mono focus:outline-none"
-                placeholder="o3-mini"
-              />
-            </div>
-
-            {/* Max Output Tokens */}
-            <div className="md:col-span-4 flex flex-col gap-1">
-              <label className="text-xs font-mono text-slate-300 font-semibold">Max Output Tokens:</label>
-              <input
-                type="number"
-                value={formData.secondary.maxOutputTokens}
-                onChange={(e) => handleSecondaryChange('maxOutputTokens', Number(e.target.value))}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-slate-200 text-xs font-mono focus:outline-none"
-                min={512}
-                max={8192}
-                step={256}
-              />
-            </div>
-
-            {/* Secondary Endpoint URL */}
-            <div className="md:col-span-12 flex flex-col gap-1">
-              <label className="text-xs font-mono text-slate-300 font-semibold">Secondary REST Endpoint URL:</label>
-              <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-blue-400">
-                <Globe className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
-                <input
-                  type="text"
-                  value={formData.secondary.url}
-                  onChange={(e) => handleSecondaryChange('url', e.target.value)}
-                  className="bg-transparent text-blue-200 text-xs w-full focus:outline-none font-mono"
-                />
-              </div>
-            </div>
-
-            {/* Secondary API Key */}
-            <div className="md:col-span-9 flex flex-col gap-1">
-              <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-blue-400" />
-                  Secondary API Key (Stored in user's laptop localStorage):
-                </span>
-                <span className="text-[10px] text-slate-400">
-                  {formData.secondary.apiKey ? '✓ Key Configured' : 'Optional — Deterministic fallback active'}
-                </span>
-              </label>
-              <div className="flex items-center bg-slate-900 border border-blue-900/50 rounded-lg px-2.5 py-1.5 focus-within:border-blue-400">
-                <input
-                  type={showSecondaryKey ? 'text' : 'password'}
-                  value={formData.secondary.apiKey}
-                  onChange={(e) => handleSecondaryChange('apiKey', e.target.value)}
-                  className="bg-transparent text-blue-200 text-xs w-full focus:outline-none font-mono"
-                  placeholder="sk-... (OpenAI / Anthropic / Groq Key)"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSecondaryKey(!showSecondaryKey)}
-                  className="text-slate-500 hover:text-slate-300 p-0.5 cursor-pointer ml-1"
-                >
-                  {showSecondaryKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Test Secondary Connection Button */}
-            <div className="md:col-span-3 flex items-end">
+          <div className="flex flex-col gap-3.5">
+            {/* Quick Provider Presets Bar */}
+            <div className="flex flex-wrap items-center gap-1.5 pb-1 border-b border-slate-800/80">
+              <span className="text-[10px] text-slate-400 font-mono font-semibold uppercase tracking-wider mr-1">
+                Quick Presets:
+              </span>
               <button
                 type="button"
-                onClick={runSecondaryTest}
-                disabled={testingSecondary}
-                className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-300 text-xs font-mono font-semibold flex items-center justify-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    secondary: {
+                      ...prev.secondary,
+                      provider: 'openai',
+                      url: 'https://api.openai.com/v1/chat/completions',
+                      model: 'o3-mini',
+                      maxOutputTokens: 4096,
+                    },
+                  }));
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                  formData.secondary.provider === 'openai' && formData.secondary.model === 'o3-mini'
+                    ? 'bg-blue-950 border-blue-500 text-blue-300 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-blue-300 hover:border-slate-700'
+                }`}
               >
-                {testingSecondary ? (
-                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Zap className="w-3.5 h-3.5 text-blue-400" />
-                )}
-                <span>Test Secondary Key</span>
+                OpenAI (o3-mini)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    secondary: {
+                      ...prev.secondary,
+                      provider: 'anthropic',
+                      url: 'https://api.anthropic.com/v1/messages',
+                      model: 'claude-3-5-sonnet-20241022',
+                      maxOutputTokens: 4096,
+                    },
+                  }));
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                  formData.secondary.provider === 'anthropic'
+                    ? 'bg-blue-950 border-blue-500 text-blue-300 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-blue-300 hover:border-slate-700'
+                }`}
+              >
+                Claude 3.5 Sonnet
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    secondary: {
+                      ...prev.secondary,
+                      provider: 'groq',
+                      url: 'https://api.groq.com/openai/v1/chat/completions',
+                      model: 'llama-3.3-70b-versatile',
+                      maxOutputTokens: 4096,
+                    },
+                  }));
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                  formData.secondary.provider === 'groq'
+                    ? 'bg-blue-950 border-blue-500 text-blue-300 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-blue-300 hover:border-slate-700'
+                }`}
+              >
+                Groq (Llama 3.3)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    secondary: {
+                      ...prev.secondary,
+                      provider: 'openrouter',
+                      url: 'https://openrouter.ai/api/v1/chat/completions',
+                      model: 'deepseek/deepseek-r1',
+                      maxOutputTokens: 4096,
+                    },
+                  }));
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                  formData.secondary.provider === 'openrouter'
+                    ? 'bg-blue-950 border-blue-500 text-blue-300 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-blue-300 hover:border-slate-700'
+                }`}
+              >
+                OpenRouter (DeepSeek R1)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    secondary: {
+                      ...prev.secondary,
+                      provider: 'gemini',
+                      url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
+                      model: 'gemini-1.5-pro',
+                      maxOutputTokens: 4096,
+                    },
+                  }));
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                  formData.secondary.provider === 'gemini'
+                    ? 'bg-blue-950 border-blue-500 text-blue-300 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-blue-300 hover:border-slate-700'
+                }`}
+              >
+                Google Gemini
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    secondary: {
+                      ...prev.secondary,
+                      provider: 'custom',
+                      url: 'http://localhost:11434/v1/chat/completions',
+                      model: 'llama3.1:8b',
+                      maxOutputTokens: 4096,
+                    },
+                  }));
+                }}
+                className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                  formData.secondary.url.includes('localhost')
+                    ? 'bg-blue-950 border-blue-500 text-blue-300 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-blue-300 hover:border-slate-700'
+                }`}
+              >
+                Local Ollama
               </button>
             </div>
 
-            {/* Secondary Test Message */}
-            {secondaryTestResult && (
-              <div
-                className={`md:col-span-12 p-2.5 rounded-lg text-xs font-mono flex items-center gap-2 ${
-                  secondaryTestResult.success
-                    ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300'
-                    : 'bg-red-950/60 border border-red-900/60 text-red-200'
-                }`}
-              >
-                {secondaryTestResult.success ? (
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                )}
-                <span>{secondaryTestResult.message}</span>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+              {/* Secondary Provider */}
+              <div className="md:col-span-3 flex flex-col gap-1">
+                <label className="text-xs font-mono text-slate-300 font-semibold">Secondary Provider:</label>
+                <select
+                  value={formData.secondary.provider}
+                  onChange={(e) => {
+                    const prov = e.target.value as any;
+                    if (prov === 'openai') {
+                      setFormData((prev) => ({
+                        ...prev,
+                        secondary: {
+                          ...prev.secondary,
+                          provider: 'openai',
+                          url: 'https://api.openai.com/v1/chat/completions',
+                          model: 'o3-mini',
+                        },
+                      }));
+                    } else if (prov === 'anthropic') {
+                      setFormData((prev) => ({
+                        ...prev,
+                        secondary: {
+                          ...prev.secondary,
+                          provider: 'anthropic',
+                          url: 'https://api.anthropic.com/v1/messages',
+                          model: 'claude-3-5-sonnet-20241022',
+                        },
+                      }));
+                    } else if (prov === 'groq') {
+                      setFormData((prev) => ({
+                        ...prev,
+                        secondary: {
+                          ...prev.secondary,
+                          provider: 'groq',
+                          url: 'https://api.groq.com/openai/v1/chat/completions',
+                          model: 'llama-3.3-70b-versatile',
+                        },
+                      }));
+                    } else if (prov === 'openrouter') {
+                      setFormData((prev) => ({
+                        ...prev,
+                        secondary: {
+                          ...prev.secondary,
+                          provider: 'openrouter',
+                          url: 'https://openrouter.ai/api/v1/chat/completions',
+                          model: 'deepseek/deepseek-r1',
+                        },
+                      }));
+                    } else if (prov === 'gemini') {
+                      setFormData((prev) => ({
+                        ...prev,
+                        secondary: {
+                          ...prev.secondary,
+                          provider: 'gemini',
+                          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
+                          model: 'gemini-1.5-pro',
+                        },
+                      }));
+                    } else {
+                      handleSecondaryChange('provider', prov);
+                    }
+                  }}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-blue-200 text-xs font-mono focus:outline-none"
+                >
+                  <option value="openai">OpenAI (o3-mini / gpt-4o)</option>
+                  <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+                  <option value="groq">Groq High-Speed (Llama 3.3)</option>
+                  <option value="openrouter">OpenRouter (DeepSeek R1 / Any)</option>
+                  <option value="gemini">Google Gemini (Gemini 1.5 Pro)</option>
+                  <option value="custom">Custom / Local Endpoint</option>
+                </select>
               </div>
-            )}
+
+              {/* Model Identifier */}
+              <div className="md:col-span-3 flex flex-col gap-1">
+                <label className="text-xs font-mono text-slate-300 font-semibold">Secondary Model Identifier:</label>
+                <input
+                  type="text"
+                  value={formData.secondary.model}
+                  onChange={(e) => handleSecondaryChange('model', e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-slate-200 text-xs font-mono focus:outline-none"
+                  placeholder="o3-mini"
+                />
+              </div>
+
+              {/* Temperature */}
+              <div className="md:col-span-3 flex flex-col gap-1">
+                <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+                  <span>Temperature:</span>
+                  <span className="text-blue-300 font-bold">{formData.secondary.temperature}</span>
+                </label>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="1.0"
+                  step="0.05"
+                  disabled={formData.secondary.model.startsWith('o1') || formData.secondary.model.startsWith('o3')}
+                  value={formData.secondary.temperature}
+                  onChange={(e) => handleSecondaryChange('temperature', parseFloat(e.target.value))}
+                  className="w-full accent-blue-500 cursor-pointer disabled:opacity-40 mt-1"
+                />
+                {(formData.secondary.model.startsWith('o1') || formData.secondary.model.startsWith('o3')) && (
+                  <span className="text-[10px] text-amber-400 font-mono">
+                    (Auto-omitted for reasoning models)
+                  </span>
+                )}
+              </div>
+
+              {/* Max Output Tokens */}
+              <div className="md:col-span-3 flex flex-col gap-1">
+                <label className="text-xs font-mono text-slate-300 font-semibold">Max Output Tokens:</label>
+                <input
+                  type="number"
+                  value={formData.secondary.maxOutputTokens}
+                  onChange={(e) => handleSecondaryChange('maxOutputTokens', Number(e.target.value))}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-slate-200 text-xs font-mono focus:outline-none"
+                  min={512}
+                  max={8192}
+                  step={256}
+                />
+              </div>
+
+              {/* Secondary Endpoint URL */}
+              <div className="md:col-span-12 flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono text-slate-300 font-semibold">Secondary REST Endpoint URL:</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        secondary: {
+                          ...prev.secondary,
+                          provider: 'openai',
+                          url: 'https://api.openai.com/v1/chat/completions',
+                          model: 'o3-mini',
+                        },
+                      }));
+                    }}
+                    className="text-[10px] text-amber-400 hover:text-amber-300 underline font-mono cursor-pointer"
+                  >
+                    Restore Default (o3-mini)
+                  </button>
+                </div>
+                <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-blue-400">
+                  <Globe className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
+                  <input
+                    type="text"
+                    value={formData.secondary.url}
+                    onChange={(e) => handleSecondaryChange('url', e.target.value)}
+                    className="bg-transparent text-blue-200 text-xs w-full focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Secondary API Key */}
+              <div className="md:col-span-9 flex flex-col gap-1">
+                <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-blue-400" />
+                    Secondary API Key (Stored in user's laptop localStorage):
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {formData.secondary.apiKey
+                      ? '✓ Key Configured'
+                      : formData.secondary.url.includes('localhost')
+                      ? '✓ Local Endpoint (No Key Required)'
+                      : 'Optional — Deterministic fallback active'}
+                  </span>
+                </label>
+                <div className="flex items-center bg-slate-900 border border-blue-900/50 rounded-lg px-2.5 py-1.5 focus-within:border-blue-400">
+                  <input
+                    type={showSecondaryKey ? 'text' : 'password'}
+                    value={formData.secondary.apiKey}
+                    onChange={(e) => handleSecondaryChange('apiKey', e.target.value)}
+                    className="bg-transparent text-blue-200 text-xs w-full focus:outline-none font-mono"
+                    placeholder="sk-... (OpenAI / Anthropic / Groq Key, or empty for local Ollama)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecondaryKey(!showSecondaryKey)}
+                    className="text-slate-500 hover:text-slate-300 p-0.5 cursor-pointer ml-1"
+                  >
+                    {showSecondaryKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Test Secondary Connection Button */}
+              <div className="md:col-span-3 flex items-end">
+                <button
+                  type="button"
+                  onClick={runSecondaryTest}
+                  disabled={testingSecondary}
+                  className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-300 text-xs font-mono font-semibold flex items-center justify-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
+                >
+                  {testingSecondary ? (
+                    <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5 text-blue-400" />
+                  )}
+                  <span>Test Secondary Key</span>
+                </button>
+              </div>
+
+              {/* Secondary Test Message */}
+              {secondaryTestResult && (
+                <div
+                  className={`md:col-span-12 p-2.5 rounded-lg text-xs font-mono flex items-center gap-2 ${
+                    secondaryTestResult.success
+                      ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300'
+                      : 'bg-red-950/60 border border-red-900/60 text-red-200'
+                  }`}
+                >
+                  {secondaryTestResult.success ? (
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  )}
+                  <span>{secondaryTestResult.message}</span>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="p-3 rounded-lg bg-slate-900 text-xs text-slate-400 font-mono border border-slate-800">

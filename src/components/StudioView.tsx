@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { DivisionalChartId, DivisionalChart } from '../types';
 import {
   DIVISIONAL_CHARTS,
@@ -29,6 +29,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   Calculator,
+  GripVertical,
 } from 'lucide-react';
 
 export const StudioView: React.FC = () => {
@@ -41,6 +42,65 @@ export const StudioView: React.FC = () => {
   const [isChartSectionOpen, setIsChartSectionOpen] = useState(true);
   const [isMatrixSectionOpen, setIsMatrixSectionOpen] = useState(true);
   const [showBphsMath, setShowBphsMath] = useState(false);
+
+  // Left Panel Mouse-Driven Resizable Splitter State
+  const [leftPanelWidth, setLeftPanelWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('studio_left_panel_width');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (val >= 240 && val <= 650) return val;
+      }
+    } catch (e) {}
+    return 320;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing || !containerRef.current) return;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newWidth = e.clientX - containerRect.left;
+      const minWidth = 240;
+      // Allow up to 55% of container or 650px, ensuring right canvas has at least 340px
+      const maxWidth = Math.min(650, Math.max(300, containerRect.width - 340));
+      if (newWidth >= minWidth && newWidth <= maxWidth) {
+        setLeftPanelWidth(newWidth);
+        try {
+          localStorage.setItem('studio_left_panel_width', newWidth.toString());
+        } catch (err) {}
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing) {
+        setIsResizing(false);
+      }
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
 
   const currentChart: DivisionalChart =
     DIVISIONAL_CHARTS.find((c) => c.id === selectedChartId) || DIVISIONAL_CHARTS[0];
@@ -63,13 +123,13 @@ export const StudioView: React.FC = () => {
         <div className="flex items-center gap-2 text-slate-300">
           <button
             onClick={() => setShowLeftPanel(!showLeftPanel)}
-            className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-800/40 flex items-center gap-1.5 transition-all"
+            className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-800/40 flex items-center gap-1.5 transition-all cursor-pointer"
             title="Toggle Left Side-Panel"
           >
             {showLeftPanel ? (
               <>
                 <PanelLeftClose className="w-3.5 h-3.5 text-amber-400" />
-                <span>Hide Left Panel (Full Screen Chart)</span>
+                <span>Hide Left Panel</span>
               </>
             ) : (
               <>
@@ -78,6 +138,29 @@ export const StudioView: React.FC = () => {
               </>
             )}
           </button>
+
+          {showLeftPanel && (
+            <div className="hidden lg:flex items-center gap-1.5 text-slate-400 text-[11px]">
+              <span className="text-slate-600">•</span>
+              <span>
+                Panel Width: <strong className="text-amber-300 font-mono">{leftPanelWidth}px</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLeftPanelWidth(320);
+                  try {
+                    localStorage.setItem('studio_left_panel_width', '320');
+                  } catch (e) {}
+                }}
+                className="text-[10px] text-slate-400 hover:text-amber-300 underline cursor-pointer ml-0.5"
+                title="Reset Left Panel Width to Default (320px)"
+              >
+                Reset
+              </button>
+            </div>
+          )}
+
           <span className="text-slate-600 hidden sm:inline">•</span>
           <span className="text-slate-400 hidden sm:inline text-[11px]">
             Active Chart: <strong className="text-amber-300 font-bold">{currentChart.name} ({currentChart.id})</strong>
@@ -87,14 +170,14 @@ export const StudioView: React.FC = () => {
         <div className="flex items-center gap-1.5">
           <button
             onClick={handleExpandAll}
-            className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-[11px] text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors"
+            className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-[11px] text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
           >
             <ChevronsDown className="w-3 h-3" />
             Expand All
           </button>
           <button
             onClick={handleCollapseAll}
-            className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-[11px] text-slate-400 hover:text-slate-200 border border-slate-800 flex items-center gap-1 transition-colors"
+            className="px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-[11px] text-slate-400 hover:text-slate-200 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
           >
             <ChevronsUp className="w-3 h-3" />
             Collapse All
@@ -102,21 +185,73 @@ export const StudioView: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid Layout: Responsive 25% Left Panel vs 75% Main Canvas or 100% full width when toggled */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* LEFT PANEL: PERSISTENT METADATA (25%) */}
+      {/* Resizable Layout: Mouse-resizable Left Panel and Main Canvas with Splitter */}
+      <div
+        ref={containerRef}
+        className="flex flex-col lg:flex-row items-stretch relative"
+      >
+        {/* LEFT PANEL: PERSISTENT METADATA */}
         {showLeftPanel && (
-          <div className="lg:col-span-4 xl:col-span-3 transition-all">
-            <LeftPanel />
-          </div>
+          <>
+            {/* Desktop fixed-width wrapper & Mobile full-width */}
+            <div
+              className="w-full lg:shrink-0 overflow-hidden transition-none"
+              style={{ width: undefined }}
+            >
+              {/* Desktop clamped container */}
+              <div
+                className="hidden lg:block h-full"
+                style={{ width: `${leftPanelWidth}px` }}
+              >
+                <LeftPanel />
+              </div>
+              {/* Mobile container */}
+              <div className="lg:hidden w-full mb-5">
+                <LeftPanel />
+              </div>
+            </div>
+
+            {/* MOUSE-DRIVEN RESIZABLE SPLITTER (AI Studio Style) */}
+            <div
+              onMouseDown={startResizing}
+              onDoubleClick={() => {
+                setLeftPanelWidth(320);
+                try {
+                  localStorage.setItem('studio_left_panel_width', '320');
+                } catch (e) {}
+              }}
+              className={`hidden lg:flex items-center justify-center w-3 hover:w-3.5 mx-1 group cursor-col-resize select-none shrink-0 transition-all z-20 relative ${
+                isResizing ? 'bg-amber-500/15' : 'hover:bg-amber-500/10'
+              }`}
+              title="Drag with mouse to resize left panel (Double-click to reset)"
+            >
+              {/* Vertical guideline */}
+              <div
+                className={`w-[2px] h-full transition-colors ${
+                  isResizing
+                    ? 'bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.6)]'
+                    : 'bg-slate-800 group-hover:bg-amber-500/70'
+                }`}
+              />
+
+              {/* Central Grab Handle with grip dots */}
+              <div
+                className={`absolute top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 py-3 px-1 rounded-full bg-slate-900 border transition-all shadow-md ${
+                  isResizing
+                    ? 'border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.5)]'
+                    : 'border-slate-700/90 group-hover:border-amber-500/70'
+                }`}
+              >
+                <div className={`w-1 h-1 rounded-full transition-colors ${isResizing ? 'bg-amber-300' : 'bg-slate-400 group-hover:bg-amber-300'}`} />
+                <div className={`w-1 h-1 rounded-full transition-colors ${isResizing ? 'bg-amber-300' : 'bg-slate-400 group-hover:bg-amber-300'}`} />
+                <div className={`w-1 h-1 rounded-full transition-colors ${isResizing ? 'bg-amber-300' : 'bg-slate-400 group-hover:bg-amber-300'}`} />
+              </div>
+            </div>
+          </>
         )}
 
-        {/* MAIN CANVAS: DIVISIONAL CHART GRID (75% or 100% width) */}
-        <div
-          className={`${
-            showLeftPanel ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'
-          } flex flex-col gap-4 transition-all`}
-        >
+        {/* MAIN CANVAS: DIVISIONAL CHART GRID (Flex-1) */}
+        <div className={`flex-1 min-w-0 flex flex-col gap-4 ${showLeftPanel ? 'lg:pl-2' : ''}`}>
           {/* SECTION 1: Tabbed Divisional Chart Visualizer (Collapsible) */}
           <div className="bg-slate-900/90 rounded-2xl border border-amber-900/40 shadow-xl backdrop-blur overflow-hidden transition-all">
             {/* Header & Collapse Trigger */}

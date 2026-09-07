@@ -20,7 +20,7 @@ export interface PrimaryLlmConfig {
 
 export interface SecondaryLlmConfig {
   enabled: boolean;
-  provider: 'openai' | 'anthropic' | 'groq' | 'openrouter' | 'custom';
+  provider: 'openai' | 'anthropic' | 'groq' | 'openrouter' | 'gemini' | 'custom';
   url: string; // e.g. "https://api.openai.com/v1/chat/completions"
   model: string; // e.g. "o3-mini"
   apiKey: string; // Local laptop in-app key
@@ -292,11 +292,13 @@ async function callSecondaryLlm(
 ): Promise<SingleLlmResult> {
   const startTime = Date.now();
   const apiKey = config.apiKey.trim();
+  const isLocal = config.url.includes('localhost') || config.url.includes('127.0.0.1');
 
-  // If user provided an API Key for Secondary LLM on local laptop
-  if (apiKey && config.enabled) {
+  // If user provided an API Key or is running on a local endpoint without an API key
+  if ((apiKey || isLocal) && config.enabled) {
     try {
       const isAnthropic = config.provider === 'anthropic' || config.url.includes('anthropic.com');
+      const isGemini = config.provider === 'gemini' || config.url.includes('googleapis.com');
 
       if (isAnthropic) {
         const response = await fetch(config.url, {
@@ -305,6 +307,7 @@ async function callSecondaryLlm(
             'Content-Type': 'application/json',
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
           },
           body: JSON.stringify({
             model: config.model,
@@ -332,26 +335,77 @@ async function callSecondaryLlm(
         };
       }
 
-      // OpenAI / Groq / OpenRouter / Custom compatible
+      if (isGemini) {
+        const url = `${config.url}${config.url.includes('?') ? '&' : '?'}key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: payload.fullOutboundPrompt }] }],
+            generationConfig: {
+              temperature: config.temperature,
+              maxOutputTokens: config.maxOutputTokens,
+            },
+          }),
+        });
+
+        const elapsed = Date.now() - startTime;
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Gemini HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+        }
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const tokens = data.usageMetadata?.totalTokenCount || 1150;
+        return {
+          source: 'live_api',
+          model: config.model,
+          provider: 'Secondary Google Gemini (Live Injected)',
+          endpoint: config.url,
+          latencyMs: elapsed,
+          tokenCount: tokens,
+          statusMessage: `Live Secondary Gemini response received in ${(elapsed / 1000).toFixed(2)}s`,
+          markdown: content,
+        };
+      }
+
+      // OpenAI / Groq / OpenRouter / Ollama / Custom compatible
+      const isOpenAiReasoning =
+        config.model.startsWith('o1') ||
+        config.model.startsWith('o3') ||
+        config.model.includes('o3-mini');
+
+      const requestBody: any = {
+        model: config.model,
+        messages: [
+          {
+            role: isOpenAiReasoning ? 'developer' : 'system',
+            content:
+              'You are an independent Vedic Astrological Auditor conducting cross-validation of classical BPHS charts.',
+          },
+          { role: 'user', content: payload.fullOutboundPrompt },
+        ],
+      };
+
+      // OpenAI reasoning models (o1, o3-mini) reject 'temperature' and 'max_tokens'
+      if (isOpenAiReasoning) {
+        requestBody.max_completion_tokens = config.maxOutputTokens;
+      } else {
+        requestBody.max_tokens = config.maxOutputTokens;
+        requestBody.temperature = config.temperature;
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
       const response = await fetch(config.url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You are an independent Vedic Astrological Auditor conducting cross-validation of classical BPHS charts.',
-            },
-            { role: 'user', content: payload.fullOutboundPrompt },
-          ],
-          temperature: config.temperature,
-          max_tokens: config.maxOutputTokens,
-        }),
+        headers,
+        body: JSON.stringify(requestBody),
       });
 
       const elapsed = Date.now() - startTime;
@@ -617,24 +671,88 @@ export async function testEndpointConnection(
 
     if (type === 'secondary') {
       const cfg = settings.secondary;
-      if (!cfg.apiKey) {
+      const isLocal = cfg.url.includes('localhost') || cfg.url.includes('127.0.0.1');
+      if (!cfg.apiKey && !isLocal) {
         return {
           success: false,
           latencyMs: 0,
-          message: 'No Secondary API Key entered yet. Enter an API key to test connection.',
+          message: 'No Secondary API Key entered yet. Enter an API key (or use a local Ollama/vLLM URL) to test connection.',
         };
       }
+
+      const isAnthropic = cfg.provider === 'anthropic' || cfg.url.includes('anthropic.com');
+      const isGemini = cfg.provider === 'gemini' || cfg.url.includes('googleapis.com');
+
+      if (isAnthropic) {
+        const res = await fetch(cfg.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': cfg.apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: cfg.model,
+            max_tokens: 15,
+            messages: [{ role: 'user', content: 'Ping' }],
+          }),
+        });
+        const elapsed = Date.now() - start;
+        if (res.ok) {
+          return { success: true, latencyMs: elapsed, message: `Connected to Anthropic ${cfg.model} successfully (${elapsed}ms)!` };
+        } else {
+          const err = await res.text();
+          return { success: false, latencyMs: elapsed, message: `Anthropic HTTP ${res.status}: ${err.slice(0, 100)}` };
+        }
+      }
+
+      if (isGemini) {
+        const url = `${cfg.url}${cfg.url.includes('?') ? '&' : '?'}key=${cfg.apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'Ping secondary astrological test' }] }],
+            generationConfig: { maxOutputTokens: 10 },
+          }),
+        });
+        const elapsed = Date.now() - start;
+        if (res.ok) {
+          return { success: true, latencyMs: elapsed, message: `Connected to Secondary Gemini ${cfg.model} successfully (${elapsed}ms)!` };
+        } else {
+          const err = await res.text();
+          return { success: false, latencyMs: elapsed, message: `Gemini HTTP ${res.status}: ${err.slice(0, 100)}` };
+        }
+      }
+
+      // OpenAI / Groq / OpenRouter / Ollama / Custom compatible
+      const isOpenAiReasoning =
+        cfg.model.startsWith('o1') ||
+        cfg.model.startsWith('o3') ||
+        cfg.model.includes('o3-mini');
+
+      const testBody: any = {
+        model: cfg.model,
+        messages: [{ role: 'user', content: 'Ping' }],
+      };
+      if (isOpenAiReasoning) {
+        testBody.max_completion_tokens = 20;
+      } else {
+        testBody.max_tokens = 10;
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (cfg.apiKey) {
+        headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+      }
+
       const res = await fetch(cfg.url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${cfg.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: cfg.model,
-          messages: [{ role: 'user', content: 'Ping' }],
-          max_tokens: 5,
-        }),
+        headers,
+        body: JSON.stringify(testBody),
       });
       const elapsed = Date.now() - start;
       if (res.ok) {
