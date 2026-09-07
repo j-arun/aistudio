@@ -9,6 +9,7 @@ import {
   Lock,
   Copy,
   RefreshCw,
+  Server,
 } from 'lucide-react';
 import {
   NATIVE_METADATA,
@@ -17,10 +18,13 @@ import {
   ASHTAKAVARGA_DATA,
   SHADBALA_DATA,
 } from '../data/canonicalHoroscope';
+import { LlmConfigSettings } from './LlmConfigSettings';
+import { loadLlmSettings, InjectedLlmSettings } from '../utils/llmService';
 
 export const ConfigLogsView: React.FC = () => {
   const [copied, setCopied] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'memory' | 'security' | 'audit'>('memory');
+  const [activeSubTab, setActiveSubTab] = useState<'memory' | 'security' | 'audit' | 'llm_config'>('llm_config');
+  const [llmSettings, setLlmSettings] = useState<InjectedLlmSettings>(loadLlmSettings);
 
   const canonicalMemoryJson = JSON.stringify(
     {
@@ -60,7 +64,18 @@ export const ConfigLogsView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono">
+          <div className="flex flex-wrap items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono gap-1">
+            <button
+              onClick={() => setActiveSubTab('llm_config')}
+              className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                activeSubTab === 'llm_config'
+                  ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Server className="w-3.5 h-3.5 text-amber-400" />
+              <span>Injected LLM Settings</span>
+            </button>
             <button
               onClick={() => setActiveSubTab('memory')}
               className={`px-3 py-1 rounded-lg transition-all ${
@@ -93,6 +108,14 @@ export const ConfigLogsView: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* SUBTAB 0: Injected LLM Connections */}
+        {activeSubTab === 'llm_config' && (
+          <LlmConfigSettings
+            settings={llmSettings}
+            onUpdateSettings={(newSettings) => setLlmSettings(newSettings)}
+          />
+        )}
 
         {/* SUBTAB 1: Canonical JSON Memory */}
         {activeSubTab === 'memory' && (

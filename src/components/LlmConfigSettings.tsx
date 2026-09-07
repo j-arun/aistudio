@@ -1,0 +1,712 @@
+import React, { useState } from 'react';
+import {
+  Server,
+  Key,
+  Globe,
+  Sliders,
+  Check,
+  AlertCircle,
+  RotateCcw,
+  Eye,
+  EyeOff,
+  Cpu,
+  Zap,
+  Sparkles,
+  Layers,
+  Save,
+  Laptop,
+} from 'lucide-react';
+import {
+  InjectedLlmSettings,
+  DEFAULT_LLM_SETTINGS,
+  saveLlmSettings,
+  testEndpointConnection,
+} from '../utils/llmService';
+
+interface LlmConfigSettingsProps {
+  settings: InjectedLlmSettings;
+  onUpdateSettings: (newSettings: InjectedLlmSettings) => void;
+  onClose?: () => void;
+}
+
+export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
+  settings,
+  onUpdateSettings,
+  onClose,
+}) => {
+  const [formData, setFormData] = useState<InjectedLlmSettings>(settings);
+  const [showPrimaryKey, setShowPrimaryKey] = useState(false);
+  const [showSecondaryKey, setShowSecondaryKey] = useState(false);
+  const [showPersonalKey, setShowPersonalKey] = useState(false);
+
+  // Testing states
+  const [testingPersonal, setTestingPersonal] = useState(false);
+  const [personalTestResult, setPersonalTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const [testingPrimary, setTestingPrimary] = useState(false);
+  const [primaryTestResult, setPrimaryTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const [testingSecondary, setTestingSecondary] = useState(false);
+  const [secondaryTestResult, setSecondaryTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Handlers for Personal LLM
+  const handlePersonalChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      personal: { ...prev.personal, [field]: value },
+    }));
+  };
+
+  // Handlers for Primary LLM
+  const handlePrimaryChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      primary: { ...prev.primary, [field]: value },
+    }));
+  };
+
+  // Handlers for Secondary LLM
+  const handleSecondaryChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      secondary: { ...prev.secondary, [field]: value },
+    }));
+  };
+
+  const handleSave = () => {
+    saveLlmSettings(formData);
+    onUpdateSettings(formData);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2500);
+  };
+
+  const handleResetDefaults = () => {
+    setFormData(DEFAULT_LLM_SETTINGS);
+    saveLlmSettings(DEFAULT_LLM_SETTINGS);
+    onUpdateSettings(DEFAULT_LLM_SETTINGS);
+    setPersonalTestResult(null);
+    setPrimaryTestResult(null);
+    setSecondaryTestResult(null);
+  };
+
+  const runPersonalTest = async () => {
+    setTestingPersonal(true);
+    setPersonalTestResult(null);
+    const res = await testEndpointConnection('personal', formData);
+    setPersonalTestResult(res);
+    setTestingPersonal(false);
+  };
+
+  const runPrimaryTest = async () => {
+    setTestingPrimary(true);
+    setPrimaryTestResult(null);
+    const res = await testEndpointConnection('primary', formData);
+    setPrimaryTestResult(res);
+    setTestingPrimary(false);
+  };
+
+  const runSecondaryTest = async () => {
+    setTestingSecondary(true);
+    setSecondaryTestResult(null);
+    const res = await testEndpointConnection('secondary', formData);
+    setSecondaryTestResult(res);
+    setTestingSecondary(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-6 text-slate-100 font-sans">
+      {/* Top Banner Notice */}
+      <div className="p-3.5 rounded-xl bg-slate-900 border border-amber-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400">
+            <Laptop className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="font-bold text-amber-200 text-sm flex items-center gap-1.5">
+              <span>In-App Injected LLM Connection Configurations</span>
+              <span className="text-[10px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800/40 font-mono">
+                Local Laptop Storage
+              </span>
+            </div>
+            <p className="text-slate-400 text-xs">
+              Directly inject your local Personal LLM URL, Primary Gemini credentials, and Secondary LLM settings. If Secondary is active, reasoning requests go to both.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button
+            type="button"
+            onClick={handleResetDefaults}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono flex items-center gap-1 border border-slate-700 transition-colors cursor-pointer"
+          >
+            <RotateCcw className="w-3 h-3 text-slate-400" />
+            Reset Defaults
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs font-mono flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+          >
+            {saveSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-slate-950" />
+                <span>Saved to Laptop!</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Injected Config</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION 1: Personal LLM URL (Local Edge Inference / PII Sanitizer) */}
+      <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-900/40 flex flex-col gap-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-900/30 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Cpu className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-bold text-amber-300 text-sm font-mono flex items-center gap-2">
+                1. Personal LLM URL (Local Edge / Private Inference)
+              </h3>
+              <span className="text-[11px] text-slate-400">
+                Executes locally on your laptop via Ollama, vLLM, or LM Studio for edge PII scrubbing and pre-filtering.
+              </span>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs font-mono text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.personal.enabled}
+              onChange={(e) => handlePersonalChange('enabled', e.target.checked)}
+              className="rounded accent-amber-500 w-4 h-4 cursor-pointer"
+            />
+            <span>Enable Personal LLM</span>
+          </label>
+        </div>
+
+        {formData.personal.enabled && (
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+            {/* URL Input */}
+            <div className="md:col-span-8 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+                <span>Personal LLM Server URL:</span>
+                <span className="text-[10px] text-slate-500">Must be reachable from your browser / localhost</span>
+              </label>
+              <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-amber-400">
+                <Globe className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
+                <input
+                  type="text"
+                  value={formData.personal.url}
+                  onChange={(e) => handlePersonalChange('url', e.target.value)}
+                  className="bg-transparent text-amber-200 text-xs w-full focus:outline-none font-mono"
+                  placeholder="http://localhost:11434/v1"
+                />
+              </div>
+
+              {/* Quick Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] font-mono">
+                <span className="text-slate-500">Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => handlePersonalChange('url', 'http://localhost:11434/v1')}
+                  className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 cursor-pointer"
+                >
+                  Ollama (11434)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePersonalChange('url', 'http://127.0.0.1:8000/v1')}
+                  className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 cursor-pointer"
+                >
+                  vLLM (8000)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePersonalChange('url', 'http://localhost:1234/v1')}
+                  className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 cursor-pointer"
+                >
+                  LM Studio (1234)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePersonalChange('url', 'http://localhost:8080/v1')}
+                  className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 cursor-pointer"
+                >
+                  llama.cpp (8080)
+                </button>
+              </div>
+            </div>
+
+            {/* Model Name */}
+            <div className="md:col-span-4 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold">Local Model Tag:</label>
+              <input
+                type="text"
+                value={formData.personal.model}
+                onChange={(e) => handlePersonalChange('model', e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-slate-200 text-xs font-mono focus:outline-none"
+                placeholder="llama3.1:8b"
+              />
+              <span className="text-[10px] text-slate-500 font-mono">e.g. llama3.1:8b, mistral, qwen2.5</span>
+            </div>
+
+            {/* Optional Bearer / API key */}
+            <div className="md:col-span-6 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+                <span>Personal Auth Key (Optional):</span>
+                <span className="text-[10px] text-slate-500">Leave blank for open local Ollama</span>
+              </label>
+              <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-amber-400">
+                <Key className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
+                <input
+                  type={showPersonalKey ? 'text' : 'password'}
+                  value={formData.personal.apiKey || ''}
+                  onChange={(e) => handlePersonalChange('apiKey', e.target.value)}
+                  className="bg-transparent text-slate-200 text-xs w-full focus:outline-none font-mono"
+                  placeholder="Optional local token..."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPersonalKey(!showPersonalKey)}
+                  className="text-slate-500 hover:text-slate-300 p-0.5 cursor-pointer"
+                >
+                  {showPersonalKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Pipeline Role & Ping Button */}
+            <div className="md:col-span-6 flex items-end gap-2">
+              <div className="flex-1 flex flex-col gap-1">
+                <label className="text-xs font-mono text-slate-300 font-semibold">Local Pipeline Role:</label>
+                <select
+                  value={formData.personal.pipelineRole}
+                  onChange={(e) => handlePersonalChange('pipelineRole', e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-slate-200 text-xs font-mono focus:outline-none"
+                >
+                  <option value="pii_sanitization">PII Scrubbing & Entity Masking</option>
+                  <option value="edge_synthesis">Edge Astrological Verification</option>
+                  <option value="both">Both (Scrubbing + Verification)</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={runPersonalTest}
+                disabled={testingPersonal}
+                className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-mono font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
+              >
+                {testingPersonal ? (
+                  <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                )}
+                <span>Test Local Ping</span>
+              </button>
+            </div>
+
+            {/* Test result message */}
+            {personalTestResult && (
+              <div
+                className={`md:col-span-12 p-2.5 rounded-lg text-xs font-mono flex items-center gap-2 ${
+                  personalTestResult.success
+                    ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300'
+                    : 'bg-amber-950/60 border border-amber-900/60 text-amber-200'
+                }`}
+              >
+                {personalTestResult.success ? (
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                )}
+                <span>{personalTestResult.message}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2: Primary LLM Connection Settings */}
+      <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-900/40 flex flex-col gap-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-900/30 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Sparkles className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-bold text-amber-300 text-sm font-mono flex items-center gap-2">
+                2. Primary LLM Connection Settings (Mandatory Deep Synthesis)
+              </h3>
+              <span className="text-[11px] text-slate-400">
+                Executes the authoritative Brihat Parasara Hora Sastra (BPHS) divisional chart and 9-graha transit synthesis.
+              </span>
+            </div>
+          </div>
+
+          <div className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+            Default: Google Gemini 1.5 Pro
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+          {/* Provider Selector */}
+          <div className="md:col-span-4 flex flex-col gap-1">
+            <label className="text-xs font-mono text-slate-300 font-semibold">Primary Provider:</label>
+            <select
+              value={formData.primary.provider}
+              onChange={(e) => {
+                const prov = e.target.value as any;
+                handlePrimaryChange('provider', prov);
+                if (prov === 'gemini') {
+                  handlePrimaryChange(
+                    'url',
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+                  );
+                  handlePrimaryChange('model', 'gemini-1.5-pro');
+                } else if (prov === 'openai') {
+                  handlePrimaryChange('url', 'https://api.openai.com/v1/chat/completions');
+                  handlePrimaryChange('model', 'gpt-4o');
+                }
+              }}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-amber-200 text-xs font-mono focus:outline-none"
+            >
+              <option value="gemini">Google Gemini (Native REST)</option>
+              <option value="openai">OpenAI Compatible (v1/chat)</option>
+              <option value="custom">Custom Endpoint</option>
+            </select>
+          </div>
+
+          {/* Model Name */}
+          <div className="md:col-span-4 flex flex-col gap-1">
+            <label className="text-xs font-mono text-slate-300 font-semibold">Model Identifier:</label>
+            <input
+              type="text"
+              value={formData.primary.model}
+              onChange={(e) => handlePrimaryChange('model', e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-slate-200 text-xs font-mono focus:outline-none"
+              placeholder="gemini-1.5-pro"
+            />
+          </div>
+
+          {/* Max Tokens */}
+          <div className="md:col-span-4 flex flex-col gap-1">
+            <label className="text-xs font-mono text-slate-300 font-semibold">Max Output Tokens:</label>
+            <input
+              type="number"
+              value={formData.primary.maxOutputTokens}
+              onChange={(e) => handlePrimaryChange('maxOutputTokens', Number(e.target.value))}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-slate-200 text-xs font-mono focus:outline-none"
+              min={512}
+              max={8192}
+              step={256}
+            />
+          </div>
+
+          {/* Endpoint URL */}
+          <div className="md:col-span-12 flex flex-col gap-1">
+            <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+              <span>Primary Endpoint REST URL:</span>
+              <button
+                type="button"
+                onClick={() =>
+                  handlePrimaryChange(
+                    'url',
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+                  )
+                }
+                className="text-[10px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
+              >
+                Restore Gemini Default
+              </button>
+            </label>
+            <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-amber-400">
+              <Server className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
+              <input
+                type="text"
+                value={formData.primary.url}
+                onChange={(e) => handlePrimaryChange('url', e.target.value)}
+                className="bg-transparent text-amber-200 text-xs w-full focus:outline-none font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Primary API Key Input (User laptop injection) */}
+          <div className="md:col-span-9 flex flex-col gap-1">
+            <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                Primary LLM API Key (Stored securely in local laptop localStorage):
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {formData.primary.apiKey ? '✓ Key Configured' : 'Optional — Fallback engine active if blank'}
+              </span>
+            </label>
+            <div className="flex items-center bg-slate-900 border border-amber-900/50 rounded-lg px-2.5 py-1.5 focus-within:border-amber-400">
+              <input
+                type={showPrimaryKey ? 'text' : 'password'}
+                value={formData.primary.apiKey}
+                onChange={(e) => handlePrimaryChange('apiKey', e.target.value)}
+                className="bg-transparent text-emerald-300 text-xs w-full focus:outline-none font-mono"
+                placeholder="Paste your Gemini AI Studio API key (AIzaSy...)"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPrimaryKey(!showPrimaryKey)}
+                className="text-slate-500 hover:text-slate-300 p-0.5 cursor-pointer ml-1"
+              >
+                {showPrimaryKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Test Primary Connection Button */}
+          <div className="md:col-span-3 flex items-end">
+            <button
+              type="button"
+              onClick={runPrimaryTest}
+              disabled={testingPrimary}
+              className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-mono font-semibold flex items-center justify-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
+            >
+              {testingPrimary ? (
+                <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span>Test Primary Key</span>
+            </button>
+          </div>
+
+          {/* Primary Test Message */}
+          {primaryTestResult && (
+            <div
+              className={`md:col-span-12 p-2.5 rounded-lg text-xs font-mono flex items-center gap-2 ${
+                primaryTestResult.success
+                  ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300'
+                  : 'bg-red-950/60 border border-red-900/60 text-red-200'
+              }`}
+            >
+              {primaryTestResult.success ? (
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              )}
+              <span>{primaryTestResult.message}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION 3: Secondary LLM Settings (Dual-Dispatch: "request should go both") */}
+      <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-900/40 flex flex-col gap-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-900/30 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <Layers className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-bold text-blue-300 text-sm font-mono flex items-center gap-2">
+                3. Secondary LLM Settings (Dual Comparative Audit)
+              </h3>
+              <span className="text-[11px] text-slate-400">
+                When enabled, dispatch requests concurrently fire to <strong>both Primary and Secondary</strong> models for comparative cross-validation.
+              </span>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs font-mono text-slate-200 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.secondary.enabled}
+              onChange={(e) => handleSecondaryChange('enabled', e.target.checked)}
+              className="rounded accent-blue-500 w-4 h-4 cursor-pointer"
+            />
+            <span className="font-bold text-blue-300">Enable Dual-Dispatch (Go to Both)</span>
+          </label>
+        </div>
+
+        {formData.secondary.enabled ? (
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+            {/* Secondary Provider */}
+            <div className="md:col-span-4 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold">Secondary Provider:</label>
+              <select
+                value={formData.secondary.provider}
+                onChange={(e) => {
+                  const prov = e.target.value as any;
+                  handleSecondaryChange('provider', prov);
+                  if (prov === 'openai') {
+                    handleSecondaryChange('url', 'https://api.openai.com/v1/chat/completions');
+                    handleSecondaryChange('model', 'o3-mini');
+                  } else if (prov === 'anthropic') {
+                    handleSecondaryChange('url', 'https://api.anthropic.com/v1/messages');
+                    handleSecondaryChange('model', 'claude-3-5-sonnet-20241022');
+                  } else if (prov === 'groq') {
+                    handleSecondaryChange('url', 'https://api.groq.com/openai/v1/chat/completions');
+                    handleSecondaryChange('model', 'llama-3.3-70b-versatile');
+                  } else if (prov === 'openrouter') {
+                    handleSecondaryChange('url', 'https://openrouter.ai/api/v1/chat/completions');
+                    handleSecondaryChange('model', 'deepseek/deepseek-r1');
+                  }
+                }}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-blue-200 text-xs font-mono focus:outline-none"
+              >
+                <option value="openai">OpenAI (o3-mini / gpt-4o)</option>
+                <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+                <option value="groq">Groq High-Speed (Llama 3.3)</option>
+                <option value="openrouter">OpenRouter (DeepSeek R1 / Any)</option>
+                <option value="custom">Custom Endpoint</option>
+              </select>
+            </div>
+
+            {/* Model Identifier */}
+            <div className="md:col-span-4 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold">Secondary Model Identifier:</label>
+              <input
+                type="text"
+                value={formData.secondary.model}
+                onChange={(e) => handleSecondaryChange('model', e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-slate-200 text-xs font-mono focus:outline-none"
+                placeholder="o3-mini"
+              />
+            </div>
+
+            {/* Max Output Tokens */}
+            <div className="md:col-span-4 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold">Max Output Tokens:</label>
+              <input
+                type="number"
+                value={formData.secondary.maxOutputTokens}
+                onChange={(e) => handleSecondaryChange('maxOutputTokens', Number(e.target.value))}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-blue-400 text-slate-200 text-xs font-mono focus:outline-none"
+                min={512}
+                max={8192}
+                step={256}
+              />
+            </div>
+
+            {/* Secondary Endpoint URL */}
+            <div className="md:col-span-12 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold">Secondary REST Endpoint URL:</label>
+              <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-blue-400">
+                <Globe className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
+                <input
+                  type="text"
+                  value={formData.secondary.url}
+                  onChange={(e) => handleSecondaryChange('url', e.target.value)}
+                  className="bg-transparent text-blue-200 text-xs w-full focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Secondary API Key */}
+            <div className="md:col-span-9 flex flex-col gap-1">
+              <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-blue-400" />
+                  Secondary API Key (Stored in user's laptop localStorage):
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  {formData.secondary.apiKey ? '✓ Key Configured' : 'Optional — Deterministic fallback active'}
+                </span>
+              </label>
+              <div className="flex items-center bg-slate-900 border border-blue-900/50 rounded-lg px-2.5 py-1.5 focus-within:border-blue-400">
+                <input
+                  type={showSecondaryKey ? 'text' : 'password'}
+                  value={formData.secondary.apiKey}
+                  onChange={(e) => handleSecondaryChange('apiKey', e.target.value)}
+                  className="bg-transparent text-blue-200 text-xs w-full focus:outline-none font-mono"
+                  placeholder="sk-... (OpenAI / Anthropic / Groq Key)"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecondaryKey(!showSecondaryKey)}
+                  className="text-slate-500 hover:text-slate-300 p-0.5 cursor-pointer ml-1"
+                >
+                  {showSecondaryKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Test Secondary Connection Button */}
+            <div className="md:col-span-3 flex items-end">
+              <button
+                type="button"
+                onClick={runSecondaryTest}
+                disabled={testingSecondary}
+                className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-300 text-xs font-mono font-semibold flex items-center justify-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
+              >
+                {testingSecondary ? (
+                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 text-blue-400" />
+                )}
+                <span>Test Secondary Key</span>
+              </button>
+            </div>
+
+            {/* Secondary Test Message */}
+            {secondaryTestResult && (
+              <div
+                className={`md:col-span-12 p-2.5 rounded-lg text-xs font-mono flex items-center gap-2 ${
+                  secondaryTestResult.success
+                    ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300'
+                    : 'bg-red-950/60 border border-red-900/60 text-red-200'
+                }`}
+              >
+                {secondaryTestResult.success ? (
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                )}
+                <span>{secondaryTestResult.message}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-3 rounded-lg bg-slate-900 text-xs text-slate-400 font-mono border border-slate-800">
+            Secondary LLM is currently disabled. Dispatches will focus strictly on Primary LLM. Check the box above to activate dual-dispatch.
+          </div>
+        )}
+      </div>
+
+      {/* Save Button Footer */}
+      <div className="flex items-center justify-end gap-3 pt-2">
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-mono cursor-pointer border border-slate-800 transition-colors"
+          >
+            Close Settings
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleSave}
+          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-slate-950 font-bold text-xs font-mono flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+        >
+          {saveSuccess ? (
+            <>
+              <Check className="w-4 h-4 text-slate-950" />
+              <span>Configurations Saved Successfully!</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              <span>Apply & Save All Injected Settings</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};
