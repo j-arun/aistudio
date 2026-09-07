@@ -133,22 +133,22 @@ async function callPrimaryGemini(
   config: PrimaryLlmConfig
 ): Promise<SingleLlmResult> {
   const startTime = Date.now();
-  const apiKey = config.apiKey.trim();
+  const apiKey = (config.apiKey || '').trim().replace(/^["']|["']$/g, '');
 
   // If user provided a Gemini API Key on local laptop, dispatch real REST call
   if (apiKey && config.provider === 'gemini') {
     try {
-      // Auto-correct retired gemini-1.5-pro to gemini-2.5-flash
+      // Auto-correct retired gemini-1.5-pro to active gemini-2.5-flash
       const activeModel =
-        !config.model || config.model === 'gemini-1.5-pro' ? 'gemini-2.5-flash' : config.model;
-      let targetUrl = config.url;
-      if (targetUrl.includes('generativelanguage.googleapis.com')) {
-        targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
-      }
-      const url = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}key=${apiKey}`;
+        !config.model || config.model.includes('1.5-pro') ? 'gemini-2.5-flash' : config.model;
+      const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
+      const url = `${targetUrl}?key=${encodeURIComponent(apiKey)}`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify({
           contents: [
             {
@@ -168,7 +168,9 @@ async function callPrimaryGemini(
         const errorText = await response.text();
         let hint = '';
         if (response.status === 404) {
-          hint = ' (Notice: Ensure model is set to active gemini-2.5-flash or gemini-2.0-flash)';
+          hint = ' (Notice: Ensure model is set to active gemini-2.5-flash or gemini-2.0-flash; gemini-1.5-pro is retired)';
+        } else if (response.status === 401) {
+          hint = ' (Notice: If using an AQ. Auth Key, ensure the key is active in Google AI Studio)';
         }
         throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}${hint}`);
       }
@@ -629,7 +631,7 @@ export async function dispatchMultiLlm(
 export async function testEndpointConnection(
   type: 'personal' | 'primary' | 'secondary',
   settings: InjectedLlmSettings
-): Promise<{ success: boolean; latencyMs: number; message: string }> {
+): Promise<{ success: boolean; latencyMs: number; message: string; detectedModel?: string }> {
   const start = Date.now();
   try {
     if (type === 'personal') {
@@ -643,7 +645,8 @@ export async function testEndpointConnection(
 
     if (type === 'primary') {
       const cfg = settings.primary;
-      if (!cfg.apiKey) {
+      const cleanKey = (cfg.apiKey || '').trim().replace(/^["']|["']$/g, '');
+      if (!cleanKey) {
         return {
           success: false,
           latencyMs: 0,
@@ -651,42 +654,97 @@ export async function testEndpointConnection(
         };
       }
       if (cfg.provider === 'gemini') {
-        const activeModel =
-          !cfg.model || cfg.model === 'gemini-1.5-pro' ? 'gemini-2.5-flash' : cfg.model;
-        let targetUrl = cfg.url;
-        if (targetUrl.includes('generativelanguage.googleapis.com')) {
-          targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
-        }
-        const url = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}key=${cfg.apiKey}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: 'Ping BPHS astrological test' }] }],
-            generationConfig: { maxOutputTokens: 10 },
-          }),
-        });
-        const elapsed = Date.now() - start;
-        if (res.ok) {
-          return {
-            success: true,
-            latencyMs: elapsed,
-            message: `Connected to Gemini (${activeModel}) successfully (${elapsed}ms)!`,
-          };
-        } else {
-          const err = await res.text();
-          let friendlyNotice = '';
-          if (res.status === 404 && (cfg.model === 'gemini-1.5-pro' || cfg.url.includes('gemini-1.5-pro'))) {
-            friendlyNotice = ' — Note: Google has retired gemini-1.5-pro. Switch to gemini-2.5-flash.';
+        const isAqKey = cleanKey.startsWith('AQ.');
+
+        // Build list of models to test, filtering out retired gemini-1.5-pro
+        const requestedModel =
+          cfg.model && !cfg.model.includes('1.5-pro') ? cfg.model : 'gemini-2.5-flash';
+        const candidateModels = [
+          requestedModel,
+          'gemini-2.5-flash',
+          'gemini-2.0-flash',
+          'gemini-1.5-flash',
+        ].filter((v, i, a) => a.indexOf(v) === i);
+
+        let lastStatus = 0;
+        let lastErrorText = '';
+
+        for (const candidateModel of candidateModels) {
+          try {
+            const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${candidateModel}:generateContent`;
+            const url = `${targetUrl}?key=${encodeURIComponent(cleanKey)}`;
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': cleanKey,
+              },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: 'Ping astrological connection test' }] }],
+                generationConfig: { maxOutputTokens: 10 },
+              }),
+            });
+            const elapsed = Date.now() - start;
+
+            if (res.ok) {
+              const keyType = isAqKey ? 'Google AI Studio Auth Key (AQ.)' : 'Standard Key (AIza)';
+              return {
+                success: true,
+                latencyMs: elapsed,
+                detectedModel: candidateModel,
+                message: `Connected successfully to Gemini ${candidateModel} in ${elapsed}ms! Authenticated via ${keyType}.`,
+              };
+            }
+
+            lastStatus = res.status;
+            lastErrorText = await res.text();
+
+            // If key is structurally invalid (400) or rejected credentials (401/403), stop immediately
+            if (res.status === 400 || res.status === 401 || res.status === 403) {
+              break;
+            }
+          } catch (err: any) {
+            lastErrorText = err.message || String(err);
           }
-          return { success: false, latencyMs: elapsed, message: `HTTP ${res.status}: ${err.slice(0, 110)}${friendlyNotice}` };
         }
+
+        const elapsed = Date.now() - start;
+
+        if (lastStatus === 401) {
+          return {
+            success: false,
+            latencyMs: elapsed,
+            message: `HTTP 401: Authentication error. Please verify the API key is active in Google AI Studio (aistudio.google.com/app/apikey). Error: ${lastErrorText.slice(0, 100)}`,
+          };
+        }
+
+        if (lastStatus === 400 && lastErrorText.includes('API_KEY_INVALID')) {
+          return {
+            success: false,
+            latencyMs: elapsed,
+            message: `HTTP 400: API key invalid. Ensure you copied the entire key from Google AI Studio without extra spaces.`,
+          };
+        }
+
+        if (lastStatus === 404) {
+          return {
+            success: false,
+            latencyMs: elapsed,
+            message: `HTTP 404: Model not found. Note: Google has retired gemini-1.5-pro. Switched to gemini-2.5-flash. Details: ${lastErrorText.slice(0, 120)}`,
+          };
+        }
+
+        return {
+          success: false,
+          latencyMs: elapsed,
+          message: `HTTP ${lastStatus || 'ERR'}: ${lastErrorText.slice(0, 130)}`,
+        };
       } else {
         const res = await fetch(cfg.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${cfg.apiKey}`,
+            Authorization: `Bearer ${cleanKey}`,
           },
           body: JSON.stringify({
             model: cfg.model,

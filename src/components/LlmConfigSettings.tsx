@@ -36,10 +36,27 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
 }) => {
   const [formData, setFormData] = useState<InjectedLlmSettings>(settings);
 
-  // Sync state if external settings change
+  // Sync state if external settings change & auto-migrate any legacy 1.5-pro
   useEffect(() => {
-    setFormData(settings);
+    let cleanSettings = { ...settings };
+    if (
+      cleanSettings.primary.model.includes('1.5-pro') ||
+      cleanSettings.primary.url.includes('1.5-pro')
+    ) {
+      cleanSettings = {
+        ...cleanSettings,
+        primary: {
+          ...cleanSettings.primary,
+          model: 'gemini-2.5-flash',
+          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        },
+      };
+      saveLlmSettings(cleanSettings);
+      onUpdateSettings(cleanSettings);
+    }
+    setFormData(cleanSettings);
   }, [settings]);
+
   const [showPrimaryKey, setShowPrimaryKey] = useState(false);
   const [showSecondaryKey, setShowSecondaryKey] = useState(false);
   const [showPersonalKey, setShowPersonalKey] = useState(false);
@@ -66,10 +83,23 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
 
   // Handlers for Primary LLM
   const handlePrimaryChange = (field: string, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      primary: { ...prev.primary, [field]: value },
-    }));
+    let cleanVal = value;
+    if (field === 'apiKey' && typeof value === 'string') {
+      cleanVal = value.trim().replace(/^["']|["']$/g, '');
+    }
+    setFormData((prev) => {
+      const updatedPrimary = { ...prev.primary, [field]: cleanVal };
+      // If user inputs a key and model is still set to retired 1.5-pro, auto-upgrade to 2.5-flash
+      if (field === 'apiKey' && updatedPrimary.model.includes('1.5-pro')) {
+        updatedPrimary.model = 'gemini-2.5-flash';
+        updatedPrimary.url =
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+      }
+      return {
+        ...prev,
+        primary: updatedPrimary,
+      };
+    });
   };
 
   // Handlers for Secondary LLM
@@ -108,6 +138,20 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
     setTestingPrimary(true);
     setPrimaryTestResult(null);
     const res = await testEndpointConnection('primary', formData);
+    if (res.detectedModel && res.detectedModel !== formData.primary.model) {
+      // Auto-update to the working model accepted by Google
+      const updated = {
+        ...formData,
+        primary: {
+          ...formData.primary,
+          model: res.detectedModel,
+          url: `https://generativelanguage.googleapis.com/v1beta/models/${res.detectedModel}:generateContent`,
+        },
+      };
+      setFormData(updated);
+      saveLlmSettings(updated);
+      onUpdateSettings(updated);
+    }
     setPrimaryTestResult(res);
     setTestingPrimary(false);
   };
@@ -541,7 +585,7 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 value={formData.primary.apiKey}
                 onChange={(e) => handlePrimaryChange('apiKey', e.target.value)}
                 className="bg-transparent text-emerald-300 text-xs w-full focus:outline-none font-mono"
-                placeholder="Paste your Gemini AI Studio API key (AIzaSy...)"
+                placeholder="Paste your Gemini AI Studio API key (starts with AQ. or AIza...)"
               />
               <button
                 type="button"
@@ -551,6 +595,14 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 {showPrimaryKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
+            {formData.primary.apiKey.startsWith('AQ.') && (
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-mono mt-0.5 bg-emerald-950/70 px-2.5 py-1 rounded border border-emerald-800/40">
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>
+                  <strong>Google AI Studio Auth Key detected (AQ.***)</strong> — Automatically routed with <code className="text-emerald-300 bg-emerald-900/50 px-1 py-0.5 rounded">x-goog-api-key</code> authentication to <strong>{formData.primary.model}</strong>.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Test Primary Connection Button */}
@@ -592,7 +644,7 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
           <div className="md:col-span-12 p-3 rounded-lg bg-slate-900/80 border border-amber-900/30 text-[11px] font-mono text-slate-300 flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 font-bold text-amber-300 text-xs">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>How to Connect Google Gemini API:</span>
+              <span>How to Connect Google Gemini API (including new AQ. Auth Keys):</span>
             </div>
             <ol className="list-decimal list-inside space-y-1 text-slate-400">
               <li>
@@ -608,6 +660,9 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 .
               </li>
               <li>
+                <strong>About AQ. keys</strong>: Google recently transitioned Google AI Studio to issue new "Auth keys" prefixed with <code className="text-amber-300 bg-amber-950 px-1 py-0.5 rounded">AQ.</code> instead of legacy <code className="text-slate-400 bg-slate-800 px-1 py-0.5 rounded">AIza</code>. Both are fully supported!
+              </li>
+              <li>
                 Ensure the model is set to{' '}
                 <span className="text-amber-300 font-bold bg-amber-950/80 px-1 py-0.5 rounded border border-amber-900/40">
                   gemini-2.5-flash
@@ -617,7 +672,7 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 <em> (Note: Google retired gemini-1.5-pro in the REST API, resulting in HTTP 404).</em>
               </li>
               <li>
-                Paste your API key into the <strong className="text-slate-200">Primary LLM API Key</strong> box.
+                Paste your API key into the <strong className="text-slate-200">Primary LLM API Key</strong> box (spaces and quotes are auto-trimmed).
               </li>
               <li>
                 Click <strong className="text-amber-300">Test Primary Key</strong> to verify the connection.
