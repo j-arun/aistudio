@@ -358,9 +358,76 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
           </div>
 
           <div className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
-            Default: Google Gemini 1.5 Pro
+            Default: Google Gemini 2.5 Flash
           </div>
         </div>
+
+        {/* Gemini 1.5 Pro Deprecation Warning & 1-Click Fix */}
+        {(formData.primary.model.includes('gemini-1.5-pro') || formData.primary.url.includes('gemini-1.5-pro')) && (
+          <div className="p-3 rounded-lg bg-amber-950/60 border border-amber-600/70 text-amber-200 text-xs font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <strong className="text-amber-300 font-bold">Action Required: Gemini 1.5 Pro is Retired (HTTP 404)</strong>
+                <p className="text-[11px] text-amber-200/85 mt-0.5">
+                  Google has retired <code className="text-amber-300 bg-amber-900/50 px-1 py-0.5 rounded">gemini-1.5-pro</code> in the Generative Language API. Click below to switch to the active <code className="text-emerald-300 bg-emerald-950 px-1 py-0.5 rounded font-bold">gemini-2.5-flash</code> model.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setFormData((prev) => ({
+                  ...prev,
+                  primary: {
+                    ...prev.primary,
+                    model: 'gemini-2.5-flash',
+                    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+                  },
+                }));
+              }}
+              className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs whitespace-nowrap shadow transition-all cursor-pointer shrink-0"
+            >
+              ⚡ Fix: Switch to Gemini 2.5 Flash
+            </button>
+          </div>
+        )}
+
+        {/* Quick Gemini Model Presets */}
+        {formData.primary.provider === 'gemini' && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+            <span className="text-slate-400 text-[11px] font-semibold mr-1">Gemini Presets:</span>
+            {[
+              { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)', desc: 'Fast, state-of-the-art reasoning' },
+              { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', desc: 'Real-time ultra-low latency' },
+              { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', desc: 'High context token efficiency' },
+              { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', desc: 'Deep synthesis' },
+            ].map((p) => {
+              const isActive = formData.primary.model === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    handlePrimaryChange('model', p.id);
+                    handlePrimaryChange(
+                      'url',
+                      `https://generativelanguage.googleapis.com/v1beta/models/${p.id}:generateContent`
+                    );
+                  }}
+                  className={`px-2.5 py-1 rounded text-[11px] font-mono transition-colors cursor-pointer border ${
+                    isActive
+                      ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-sm'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-amber-200 border-slate-700'
+                  }`}
+                  title={p.desc}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
           {/* Provider Selector */}
@@ -374,9 +441,9 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 if (prov === 'gemini') {
                   handlePrimaryChange(
                     'url',
-                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
                   );
-                  handlePrimaryChange('model', 'gemini-1.5-pro');
+                  handlePrimaryChange('model', 'gemini-2.5-flash');
                 } else if (prov === 'openai') {
                   handlePrimaryChange('url', 'https://api.openai.com/v1/chat/completions');
                   handlePrimaryChange('model', 'gpt-4o');
@@ -396,9 +463,21 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
             <input
               type="text"
               value={formData.primary.model}
-              onChange={(e) => handlePrimaryChange('model', e.target.value)}
+              onChange={(e) => {
+                const newModel = e.target.value;
+                handlePrimaryChange('model', newModel);
+                if (
+                  formData.primary.provider === 'gemini' &&
+                  formData.primary.url.includes('generativelanguage.googleapis.com')
+                ) {
+                  handlePrimaryChange(
+                    'url',
+                    `https://generativelanguage.googleapis.com/v1beta/models/${newModel}:generateContent`
+                  );
+                }
+              }}
               className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-slate-200 text-xs font-mono focus:outline-none"
-              placeholder="gemini-1.5-pro"
+              placeholder="gemini-2.5-flash"
             />
           </div>
 
@@ -422,15 +501,16 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
               <span>Primary Endpoint REST URL:</span>
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   handlePrimaryChange(
                     'url',
-                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
-                  )
-                }
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+                  );
+                  handlePrimaryChange('model', 'gemini-2.5-flash');
+                }}
                 className="text-[10px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
               >
-                Restore Gemini Default
+                Restore Gemini Default (2.5 Flash)
               </button>
             </label>
             <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-amber-400">
@@ -507,6 +587,46 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
               <span>{primaryTestResult.message}</span>
             </div>
           )}
+
+          {/* Quick Guide: How to Connect Google Gemini API */}
+          <div className="md:col-span-12 p-3 rounded-lg bg-slate-900/80 border border-amber-900/30 text-[11px] font-mono text-slate-300 flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 font-bold text-amber-300 text-xs">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>How to Connect Google Gemini API:</span>
+            </div>
+            <ol className="list-decimal list-inside space-y-1 text-slate-400">
+              <li>
+                Get a free key from{' '}
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-amber-400 hover:text-amber-300 underline font-semibold"
+                >
+                  Google AI Studio (aistudio.google.com/app/apikey)
+                </a>
+                .
+              </li>
+              <li>
+                Ensure the model is set to{' '}
+                <span className="text-amber-300 font-bold bg-amber-950/80 px-1 py-0.5 rounded border border-amber-900/40">
+                  gemini-2.5-flash
+                </span>{' '}
+                (recommended) or{' '}
+                <span className="text-slate-300 bg-slate-800 px-1 py-0.5 rounded">gemini-2.0-flash</span>.
+                <em> (Note: Google retired gemini-1.5-pro in the REST API, resulting in HTTP 404).</em>
+              </li>
+              <li>
+                Paste your API key into the <strong className="text-slate-200">Primary LLM API Key</strong> box.
+              </li>
+              <li>
+                Click <strong className="text-amber-300">Test Primary Key</strong> to verify the connection.
+              </li>
+              <li>
+                Click <strong className="text-emerald-300">Save Injected Config</strong> (at top right) to save to local browser storage.
+              </li>
+            </ol>
+          </div>
         </div>
       </div>
 

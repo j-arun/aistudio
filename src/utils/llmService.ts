@@ -45,8 +45,8 @@ export const DEFAULT_LLM_SETTINGS: InjectedLlmSettings = {
   },
   primary: {
     provider: 'gemini',
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
-    model: 'gemini-1.5-pro',
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    model: 'gemini-2.5-flash',
     apiKey: '',
     temperature: 0.2,
     maxOutputTokens: 4096,
@@ -70,9 +70,19 @@ export function loadLlmSettings(): InjectedLlmSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_LLM_SETTINGS;
     const parsed = JSON.parse(raw);
+    const primary = { ...DEFAULT_LLM_SETTINGS.primary, ...(parsed.primary || {}) };
+
+    // Auto-migrate legacy/retired gemini-1.5-pro to active gemini-2.5-flash
+    if (primary.model === 'gemini-1.5-pro' || !primary.model) {
+      primary.model = 'gemini-2.5-flash';
+    }
+    if (primary.url.includes('gemini-1.5-pro')) {
+      primary.url = primary.url.replace('gemini-1.5-pro', 'gemini-2.5-flash');
+    }
+
     return {
       personal: { ...DEFAULT_LLM_SETTINGS.personal, ...(parsed.personal || {}) },
-      primary: { ...DEFAULT_LLM_SETTINGS.primary, ...(parsed.primary || {}) },
+      primary,
       secondary: { ...DEFAULT_LLM_SETTINGS.secondary, ...(parsed.secondary || {}) },
     };
   } catch (err) {
@@ -128,7 +138,14 @@ async function callPrimaryGemini(
   // If user provided a Gemini API Key on local laptop, dispatch real REST call
   if (apiKey && config.provider === 'gemini') {
     try {
-      const url = `${config.url}${config.url.includes('?') ? '&' : '?'}key=${apiKey}`;
+      // Auto-correct retired gemini-1.5-pro to gemini-2.5-flash
+      const activeModel =
+        !config.model || config.model === 'gemini-1.5-pro' ? 'gemini-2.5-flash' : config.model;
+      let targetUrl = config.url;
+      if (targetUrl.includes('generativelanguage.googleapis.com')) {
+        targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
+      }
+      const url = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}key=${apiKey}`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,7 +166,11 @@ async function callPrimaryGemini(
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+        let hint = '';
+        if (response.status === 404) {
+          hint = ' (Notice: Ensure model is set to active gemini-2.5-flash or gemini-2.0-flash)';
+        }
+        throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}${hint}`);
       }
 
       const data = await response.json();
@@ -160,12 +181,12 @@ async function callPrimaryGemini(
       if (generatedText) {
         return {
           source: 'live_api',
-          model: config.model,
+          model: activeModel,
           provider: 'Google Gemini (Live Injected)',
-          endpoint: config.url,
+          endpoint: targetUrl,
           latencyMs: elapsed,
           tokenCount: totalTokens,
-          statusMessage: `Live Gemini REST response received in ${(elapsed / 1000).toFixed(2)}s`,
+          statusMessage: `Live Gemini REST response received in ${(elapsed / 1000).toFixed(2)}s (${activeModel})`,
           markdown: generatedText,
         };
       }
@@ -630,7 +651,13 @@ export async function testEndpointConnection(
         };
       }
       if (cfg.provider === 'gemini') {
-        const url = `${cfg.url}${cfg.url.includes('?') ? '&' : '?'}key=${cfg.apiKey}`;
+        const activeModel =
+          !cfg.model || cfg.model === 'gemini-1.5-pro' ? 'gemini-2.5-flash' : cfg.model;
+        let targetUrl = cfg.url;
+        if (targetUrl.includes('generativelanguage.googleapis.com')) {
+          targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
+        }
+        const url = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}key=${cfg.apiKey}`;
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -641,10 +668,18 @@ export async function testEndpointConnection(
         });
         const elapsed = Date.now() - start;
         if (res.ok) {
-          return { success: true, latencyMs: elapsed, message: `Connected to Gemini successfully (${elapsed}ms)!` };
+          return {
+            success: true,
+            latencyMs: elapsed,
+            message: `Connected to Gemini (${activeModel}) successfully (${elapsed}ms)!`,
+          };
         } else {
           const err = await res.text();
-          return { success: false, latencyMs: elapsed, message: `HTTP ${res.status}: ${err.slice(0, 100)}` };
+          let friendlyNotice = '';
+          if (res.status === 404 && (cfg.model === 'gemini-1.5-pro' || cfg.url.includes('gemini-1.5-pro'))) {
+            friendlyNotice = ' — Note: Google has retired gemini-1.5-pro. Switch to gemini-2.5-flash.';
+          }
+          return { success: false, latencyMs: elapsed, message: `HTTP ${res.status}: ${err.slice(0, 110)}${friendlyNotice}` };
         }
       } else {
         const res = await fetch(cfg.url, {
