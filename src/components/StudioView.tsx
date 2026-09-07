@@ -43,16 +43,16 @@ export const StudioView: React.FC = () => {
   const [isMatrixSectionOpen, setIsMatrixSectionOpen] = useState(true);
   const [showBphsMath, setShowBphsMath] = useState(false);
 
-  // Left Panel Mouse-Driven Resizable Splitter State
-  const [leftPanelWidth, setLeftPanelWidth] = useState<number>(() => {
+  // Left Panel Mouse-Driven Resizable Splitter State (40% default)
+  const [leftPanelPercent, setLeftPanelPercent] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem('studio_left_panel_width');
+      const saved = localStorage.getItem('studio_left_panel_percent');
       if (saved) {
-        const val = parseInt(saved, 10);
-        if (val >= 240 && val <= 650) return val;
+        const val = parseFloat(saved);
+        if (val >= 20 && val <= 65) return val;
       }
     } catch (e) {}
-    return 320;
+    return 40;
   });
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -66,16 +66,14 @@ export const StudioView: React.FC = () => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing || !containerRef.current) return;
       const containerRect = containerRef.current.getBoundingClientRect();
-      const newWidth = e.clientX - containerRect.left;
-      const minWidth = 240;
-      // Allow up to 55% of container or 650px, ensuring right canvas has at least 340px
-      const maxWidth = Math.min(650, Math.max(300, containerRect.width - 340));
-      if (newWidth >= minWidth && newWidth <= maxWidth) {
-        setLeftPanelWidth(newWidth);
-        try {
-          localStorage.setItem('studio_left_panel_width', newWidth.toString());
-        } catch (err) {}
-      }
+      const relativeX = e.clientX - containerRect.left;
+      const newPercent = (relativeX / containerRect.width) * 100;
+      // Allow user to resize between 25% and 60% (giving main panel 40% to 75%)
+      const clamped = Math.min(60, Math.max(25, Number(newPercent.toFixed(1))));
+      setLeftPanelPercent(clamped);
+      try {
+        localStorage.setItem('studio_left_panel_percent', clamped.toString());
+      } catch (err) {}
     };
 
     const handleMouseUp = () => {
@@ -117,7 +115,7 @@ export const StudioView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-3 sm:py-5">
+    <div className="w-full max-w-[1780px] mx-auto px-2 sm:px-4 py-3 sm:py-4">
       {/* Studio Screen Master Efficiency Bar */}
       <div className="mb-3 flex items-center justify-between bg-slate-900/80 px-3.5 py-2 rounded-xl border border-amber-900/30 text-xs font-mono">
         <div className="flex items-center gap-2 text-slate-300">
@@ -143,20 +141,21 @@ export const StudioView: React.FC = () => {
             <div className="hidden lg:flex items-center gap-1.5 text-slate-400 text-[11px]">
               <span className="text-slate-600">•</span>
               <span>
-                Panel Width: <strong className="text-amber-300 font-mono">{leftPanelWidth}px</strong>
+                Left Panel: <strong className="text-amber-300 font-mono">{leftPanelPercent}%</strong>
+                <span className="text-slate-500 ml-1 font-mono">/ Main: {(100 - leftPanelPercent).toFixed(1)}%</span>
               </span>
               <button
                 type="button"
                 onClick={() => {
-                  setLeftPanelWidth(320);
+                  setLeftPanelPercent(40);
                   try {
-                    localStorage.setItem('studio_left_panel_width', '320');
+                    localStorage.setItem('studio_left_panel_percent', '40');
                   } catch (e) {}
                 }}
-                className="text-[10px] text-slate-400 hover:text-amber-300 underline cursor-pointer ml-0.5"
-                title="Reset Left Panel Width to Default (320px)"
+                className="text-[10px] text-amber-400 hover:text-amber-300 underline cursor-pointer ml-1"
+                title="Reset Split to 40% Left / 60% Main"
               >
-                Reset
+                Reset (40/60)
               </button>
             </div>
           )}
@@ -185,45 +184,42 @@ export const StudioView: React.FC = () => {
         </div>
       </div>
 
-      {/* Resizable Layout: Mouse-resizable Left Panel and Main Canvas with Splitter */}
+      {/* Resizable Layout: Mouse-resizable Left Panel (40%) and Main Canvas (60%) with Splitter */}
       <div
         ref={containerRef}
-        className="flex flex-col lg:flex-row items-stretch relative"
+        className="flex flex-col lg:flex-row items-start relative w-full"
       >
-        {/* LEFT PANEL: PERSISTENT METADATA */}
+        {/* LEFT PANEL: PERSISTENT METADATA (40% width on desktop) */}
         {showLeftPanel && (
           <>
-            {/* Desktop fixed-width wrapper & Mobile full-width */}
+            {/* Desktop clamped container (40%) */}
             <div
-              className="w-full lg:shrink-0 overflow-hidden transition-none"
-              style={{ width: undefined }}
+              className="hidden lg:block shrink-0 overflow-y-auto"
+              style={{ width: `${leftPanelPercent}%` }}
             >
-              {/* Desktop clamped container */}
-              <div
-                className="hidden lg:block h-full"
-                style={{ width: `${leftPanelWidth}px` }}
-              >
+              <div className="pr-1">
                 <LeftPanel />
               </div>
-              {/* Mobile container */}
-              <div className="lg:hidden w-full mb-5">
-                <LeftPanel />
-              </div>
+            </div>
+
+            {/* Mobile container */}
+            <div className="lg:hidden w-full mb-4">
+              <LeftPanel />
             </div>
 
             {/* MOUSE-DRIVEN RESIZABLE SPLITTER (AI Studio Style) */}
             <div
               onMouseDown={startResizing}
               onDoubleClick={() => {
-                setLeftPanelWidth(320);
+                setLeftPanelPercent(40);
                 try {
-                  localStorage.setItem('studio_left_panel_width', '320');
+                  localStorage.setItem('studio_left_panel_percent', '40');
                 } catch (e) {}
               }}
-              className={`hidden lg:flex items-center justify-center w-3 hover:w-3.5 mx-1 group cursor-col-resize select-none shrink-0 transition-all z-20 relative ${
-                isResizing ? 'bg-amber-500/15' : 'hover:bg-amber-500/10'
+              className={`hidden lg:flex items-center justify-center w-3 hover:w-3.5 mx-0.5 group cursor-col-resize select-none shrink-0 transition-all z-20 relative self-stretch min-h-[700px] ${
+                isResizing ? 'bg-amber-500/20' : 'hover:bg-amber-500/10'
               }`}
-              title="Drag with mouse to resize left panel (Double-click to reset)"
+              title="Drag with mouse to adjust split (Left: 40% / Main: 60% default. Double-click to reset)"
             >
               {/* Vertical guideline */}
               <div
@@ -236,7 +232,7 @@ export const StudioView: React.FC = () => {
 
               {/* Central Grab Handle with grip dots */}
               <div
-                className={`absolute top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 py-3 px-1 rounded-full bg-slate-900 border transition-all shadow-md ${
+                className={`sticky top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 py-3 px-1 rounded-full bg-slate-900 border transition-all shadow-md ${
                   isResizing
                     ? 'border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.5)]'
                     : 'border-slate-700/90 group-hover:border-amber-500/70'
@@ -250,8 +246,18 @@ export const StudioView: React.FC = () => {
           </>
         )}
 
-        {/* MAIN CANVAS: DIVISIONAL CHART GRID (Flex-1) */}
-        <div className={`flex-1 min-w-0 flex flex-col gap-4 ${showLeftPanel ? 'lg:pl-2' : ''}`}>
+        {/* MAIN CANVAS: DIVISIONAL CHART GRID (60% width on desktop) */}
+        <div
+          className={`w-full flex-1 min-w-0 flex flex-col gap-4 ${showLeftPanel ? 'lg:pl-2' : ''}`}
+          style={
+            showLeftPanel
+              ? {
+                  width: `calc(${100 - leftPanelPercent}% - 14px)`,
+                  maxWidth: `calc(${100 - leftPanelPercent}% - 14px)`,
+                }
+              : { width: '100%', maxWidth: '100%' }
+          }
+        >
           {/* SECTION 1: Tabbed Divisional Chart Visualizer (Collapsible) */}
           <div className="bg-slate-900/90 rounded-2xl border border-amber-900/40 shadow-xl backdrop-blur overflow-hidden transition-all">
             {/* Header & Collapse Trigger */}
