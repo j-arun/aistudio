@@ -45,8 +45,8 @@ export const DEFAULT_LLM_SETTINGS: InjectedLlmSettings = {
   },
   primary: {
     provider: 'gemini',
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    model: 'gemini-2.5-flash',
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+    model: 'gemini-flash-latest',
     apiKey: '',
     temperature: 0.2,
     maxOutputTokens: 4096,
@@ -72,18 +72,35 @@ export function loadLlmSettings(): InjectedLlmSettings {
     const parsed = JSON.parse(raw);
     const primary = { ...DEFAULT_LLM_SETTINGS.primary, ...(parsed.primary || {}) };
 
-    // Auto-migrate legacy/retired gemini-1.5-pro to active gemini-2.5-flash
-    if (primary.model === 'gemini-1.5-pro' || !primary.model) {
-      primary.model = 'gemini-2.5-flash';
+    // Migrate legacy primary Gemini model aliases to the current stable alias.
+    if (
+      !primary.model ||
+      ['gemini-1.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'].includes(primary.model)
+    ) {
+      primary.model = 'gemini-flash-latest';
     }
-    if (primary.url.includes('gemini-1.5-pro')) {
-      primary.url = primary.url.replace('gemini-1.5-pro', 'gemini-2.5-flash');
+    if (
+      primary.url.includes('gemini-1.5-pro') ||
+      primary.url.includes('gemini-2.5-flash') ||
+      primary.url.includes('gemini-2.0-flash')
+    ) {
+      primary.url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+    }
+
+    const secondary = { ...DEFAULT_LLM_SETTINGS.secondary, ...(parsed.secondary || {}) };
+    if (
+      secondary.provider === 'gemini' &&
+      (secondary.model === 'gemini-1.5-pro' || secondary.url.includes('gemini-1.5-pro'))
+    ) {
+      secondary.model = 'gemini-flash-latest';
+      secondary.url =
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
     }
 
     return {
       personal: { ...DEFAULT_LLM_SETTINGS.personal, ...(parsed.personal || {}) },
       primary,
-      secondary: { ...DEFAULT_LLM_SETTINGS.secondary, ...(parsed.secondary || {}) },
+      secondary,
     };
   } catch (err) {
     console.error('Failed to load LLM settings from localStorage:', err);
@@ -138,12 +155,11 @@ async function callPrimaryGemini(
   // If user provided a Gemini API Key on local laptop, dispatch real REST call
   if (apiKey && config.provider === 'gemini') {
     try {
-      // Auto-correct retired gemini-1.5-pro to active gemini-2.5-flash
-      const activeModel =
-        !config.model || config.model.includes('1.5-pro') ? 'gemini-2.5-flash' : config.model;
-      const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
-      const url = `${targetUrl}?key=${encodeURIComponent(apiKey)}`;
-      const response = await fetch(url, {
+      const activeModel = config.model;
+      const targetUrl = config.url;
+      const requestUrl = new URL(targetUrl);
+      requestUrl.searchParams.set('key', apiKey);
+      const response = await fetch(requestUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -168,7 +184,7 @@ async function callPrimaryGemini(
         const errorText = await response.text();
         let hint = '';
         if (response.status === 404) {
-          hint = ' (Notice: Ensure model is set to active gemini-2.5-flash or gemini-2.0-flash; gemini-1.5-pro is retired)';
+          hint = ' (Notice: Ensure the configured Gemini model is available to your Google AI Studio project)';
         } else if (response.status === 401) {
           hint = ' (Notice: If using an AQ. Auth Key, ensure the key is active in Google AI Studio)';
         }
@@ -656,59 +672,34 @@ export async function testEndpointConnection(
       if (cfg.provider === 'gemini') {
         const isAqKey = cleanKey.startsWith('AQ.');
 
-        // Build list of models to test, filtering out retired gemini-1.5-pro
-        const requestedModel =
-          cfg.model && !cfg.model.includes('1.5-pro') ? cfg.model : 'gemini-2.5-flash';
-        const candidateModels = [
-          requestedModel,
-          'gemini-2.5-flash',
-          'gemini-2.0-flash',
-          'gemini-1.5-flash',
-        ].filter((v, i, a) => a.indexOf(v) === i);
+        const targetUrl = cfg.url;
+        const requestUrl = new URL(targetUrl);
+        requestUrl.searchParams.set('key', cleanKey);
+        const res = await fetch(requestUrl.toString(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': cleanKey,
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'Ping astrological connection test' }] }],
+            generationConfig: { maxOutputTokens: 10 },
+          }),
+        });
+        const elapsed = Date.now() - start;
 
-        let lastStatus = 0;
-        let lastErrorText = '';
-
-        for (const candidateModel of candidateModels) {
-          try {
-            const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${candidateModel}:generateContent`;
-            const url = `${targetUrl}?key=${encodeURIComponent(cleanKey)}`;
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': cleanKey,
-              },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: 'Ping astrological connection test' }] }],
-                generationConfig: { maxOutputTokens: 10 },
-              }),
-            });
-            const elapsed = Date.now() - start;
-
-            if (res.ok) {
-              const keyType = isAqKey ? 'Google AI Studio Auth Key (AQ.)' : 'Standard Key (AIza)';
-              return {
-                success: true,
-                latencyMs: elapsed,
-                detectedModel: candidateModel,
-                message: `Connected successfully to Gemini ${candidateModel} in ${elapsed}ms! Authenticated via ${keyType}.`,
-              };
-            }
-
-            lastStatus = res.status;
-            lastErrorText = await res.text();
-
-            // If key is structurally invalid (400) or rejected credentials (401/403), stop immediately
-            if (res.status === 400 || res.status === 401 || res.status === 403) {
-              break;
-            }
-          } catch (err: any) {
-            lastErrorText = err.message || String(err);
-          }
+        if (res.ok) {
+          const keyType = isAqKey ? 'Google AI Studio Auth Key (AQ.)' : 'Standard Key (AIza)';
+          return {
+            success: true,
+            latencyMs: elapsed,
+            detectedModel: cfg.model,
+            message: `Connected successfully to Gemini ${cfg.model} in ${elapsed}ms! Authenticated via ${keyType}.`,
+          };
         }
 
-        const elapsed = Date.now() - start;
+        const lastStatus = res.status;
+        const lastErrorText = await res.text();
 
         if (lastStatus === 401) {
           return {
@@ -730,7 +721,7 @@ export async function testEndpointConnection(
           return {
             success: false,
             latencyMs: elapsed,
-            message: `HTTP 404: Model not found. Note: Google has retired gemini-1.5-pro. Switched to gemini-2.5-flash. Details: ${lastErrorText.slice(0, 120)}`,
+            message: `HTTP 404: Configured Gemini model or endpoint was not found. Details: ${lastErrorText.slice(0, 120)}`,
           };
         }
 

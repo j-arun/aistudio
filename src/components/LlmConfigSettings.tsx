@@ -36,19 +36,23 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
 }) => {
   const [formData, setFormData] = useState<InjectedLlmSettings>(settings);
 
-  // Sync state if external settings change & auto-migrate any legacy 1.5-pro
+  // Sync state if external settings change and migrate legacy primary aliases.
   useEffect(() => {
     let cleanSettings = { ...settings };
     if (
       cleanSettings.primary.model.includes('1.5-pro') ||
-      cleanSettings.primary.url.includes('1.5-pro')
+      cleanSettings.primary.url.includes('1.5-pro') ||
+      cleanSettings.primary.model.includes('2.5-flash') ||
+      cleanSettings.primary.url.includes('2.5-flash') ||
+      cleanSettings.primary.model.includes('2.0-flash') ||
+      cleanSettings.primary.url.includes('2.0-flash')
     ) {
       cleanSettings = {
         ...cleanSettings,
         primary: {
           ...cleanSettings.primary,
-          model: 'gemini-2.5-flash',
-          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+          model: 'gemini-flash-latest',
+          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
         },
       };
       saveLlmSettings(cleanSettings);
@@ -89,11 +93,11 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
     }
     setFormData((prev) => {
       const updatedPrimary = { ...prev.primary, [field]: cleanVal };
-      // If user inputs a key and model is still set to retired 1.5-pro, auto-upgrade to 2.5-flash
+      // If a legacy model is still selected when a key is entered, use the current alias.
       if (field === 'apiKey' && updatedPrimary.model.includes('1.5-pro')) {
-        updatedPrimary.model = 'gemini-2.5-flash';
+        updatedPrimary.model = 'gemini-flash-latest';
         updatedPrimary.url =
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
       }
       return {
         ...prev,
@@ -425,8 +429,8 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                   ...prev,
                   primary: {
                     ...prev.primary,
-                    model: 'gemini-2.5-flash',
-                    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+                    model: 'gemini-flash-latest',
+                    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
                   },
                 }));
               }}
@@ -442,7 +446,7 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
           <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono bg-slate-900/60 p-2 rounded-lg border border-slate-800">
             <span className="text-slate-400 text-[11px] font-semibold mr-1">Gemini Presets:</span>
             {[
-              { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Recommended)', desc: 'Fast, state-of-the-art reasoning' },
+              { id: 'gemini-flash-latest', label: 'Gemini Flash Latest (Recommended)', desc: 'Current Gemini Flash model alias' },
               { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', desc: 'Real-time ultra-low latency' },
               { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', desc: 'High context token efficiency' },
               { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', desc: 'Deep synthesis' },
@@ -485,9 +489,9 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 if (prov === 'gemini') {
                   handlePrimaryChange(
                     'url',
-                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
                   );
-                  handlePrimaryChange('model', 'gemini-2.5-flash');
+                  handlePrimaryChange('model', 'gemini-flash-latest');
                 } else if (prov === 'openai') {
                   handlePrimaryChange('url', 'https://api.openai.com/v1/chat/completions');
                   handlePrimaryChange('model', 'gpt-4o');
@@ -521,7 +525,7 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 }
               }}
               className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-slate-200 text-xs font-mono focus:outline-none"
-              placeholder="gemini-2.5-flash"
+              placeholder="gemini-flash-latest"
             />
           </div>
 
@@ -548,13 +552,13 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                 onClick={() => {
                   handlePrimaryChange(
                     'url',
-                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
                   );
-                  handlePrimaryChange('model', 'gemini-2.5-flash');
+                  handlePrimaryChange('model', 'gemini-flash-latest');
                 }}
                 className="text-[10px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
               >
-                Restore Gemini Default (2.5 Flash)
+                Restore Gemini Default (Flash Latest)
               </button>
             </label>
             <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus-within:border-amber-400">
@@ -816,8 +820,8 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                     secondary: {
                       ...prev.secondary,
                       provider: 'gemini',
-                      url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
-                      model: 'gemini-1.5-pro',
+                      url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+                      model: 'gemini-flash-latest',
                       maxOutputTokens: 4096,
                     },
                   }));
@@ -908,8 +912,8 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                         secondary: {
                           ...prev.secondary,
                           provider: 'gemini',
-                          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
-                          model: 'gemini-1.5-pro',
+                          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+                          model: 'gemini-flash-latest',
                         },
                       }));
                     } else {
@@ -922,7 +926,7 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
                   <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
                   <option value="groq">Groq High-Speed (Llama 3.3)</option>
                   <option value="openrouter">OpenRouter (DeepSeek R1 / Any)</option>
-                  <option value="gemini">Google Gemini (Gemini 1.5 Pro)</option>
+                  <option value="gemini">Google Gemini (Gemini Flash Latest)</option>
                   <option value="custom">Custom / Local Endpoint</option>
                 </select>
               </div>
