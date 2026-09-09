@@ -36,23 +36,20 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
 }) => {
   const [formData, setFormData] = useState<InjectedLlmSettings>(settings);
 
-  // Sync state if external settings change and migrate legacy primary aliases.
+  // Sync state if external settings change and migrate truly deprecated primary aliases.
   useEffect(() => {
     let cleanSettings = { ...settings };
+    const deprecated = ['1.5-pro', '1.5-flash', '2.0-flash', '2.0-pro'];
     if (
-      cleanSettings.primary.model.includes('1.5-pro') ||
-      cleanSettings.primary.url.includes('1.5-pro') ||
-      cleanSettings.primary.model.includes('2.5-flash') ||
-      cleanSettings.primary.url.includes('2.5-flash') ||
-      cleanSettings.primary.model.includes('2.0-flash') ||
-      cleanSettings.primary.url.includes('2.0-flash')
+      deprecated.some((d) => cleanSettings.primary.model.includes(d)) ||
+      deprecated.some((d) => cleanSettings.primary.url.includes(d))
     ) {
       cleanSettings = {
         ...cleanSettings,
         primary: {
           ...cleanSettings.primary,
-          model: 'gemini-flash-latest',
-          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+          model: 'gemini-2.5-flash',
+          url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
         },
       };
       saveLlmSettings(cleanSettings);
@@ -446,10 +443,11 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
           <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono bg-slate-900/60 p-2 rounded-lg border border-slate-800">
             <span className="text-slate-400 text-[11px] font-semibold mr-1">Gemini Presets:</span>
             {[
-              { id: 'gemini-flash-latest', label: 'Gemini Flash Latest (Recommended)', desc: 'Current Gemini Flash model alias' },
-              { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', desc: 'Real-time ultra-low latency' },
-              { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', desc: 'High context token efficiency' },
-              { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', desc: 'Deep synthesis' },
+              { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Highest Stability)', desc: 'Rock-solid canonical Parashari synthesis' },
+              { id: 'gemini-flash-latest', label: 'Gemini Flash Latest', desc: 'Current Gemini Flash model alias' },
+              { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', desc: 'Next-gen reasoning and fast generation' },
+              { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', desc: 'High availability, resilient under heavy traffic' },
+              { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview', desc: 'Deep multi-divisional chart synthesis' },
             ].map((p) => {
               const isActive = formData.primary.model === p.id;
               return (

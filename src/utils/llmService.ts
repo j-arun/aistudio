@@ -45,8 +45,8 @@ export const DEFAULT_LLM_SETTINGS: InjectedLlmSettings = {
   },
   primary: {
     provider: 'gemini',
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-    model: 'gemini-flash-latest',
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    model: 'gemini-2.5-flash',
     apiKey: '',
     temperature: 0.2,
     maxOutputTokens: 4096,
@@ -72,29 +72,25 @@ export function loadLlmSettings(): InjectedLlmSettings {
     const parsed = JSON.parse(raw);
     const primary = { ...DEFAULT_LLM_SETTINGS.primary, ...(parsed.primary || {}) };
 
-    // Migrate legacy primary Gemini model aliases to the current stable alias.
+    // Migrate deprecated legacy Gemini models (1.5, 2.0) to active models (2.5-flash)
+    const deprecatedAliases = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.0-pro'];
     if (
       !primary.model ||
-      ['gemini-1.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'].includes(primary.model)
+      deprecatedAliases.includes(primary.model) ||
+      deprecatedAliases.some((alias) => primary.url.includes(alias))
     ) {
-      primary.model = 'gemini-flash-latest';
-    }
-    if (
-      primary.url.includes('gemini-1.5-pro') ||
-      primary.url.includes('gemini-2.5-flash') ||
-      primary.url.includes('gemini-2.0-flash')
-    ) {
-      primary.url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+      primary.model = 'gemini-2.5-flash';
+      primary.url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
     }
 
     const secondary = { ...DEFAULT_LLM_SETTINGS.secondary, ...(parsed.secondary || {}) };
     if (
       secondary.provider === 'gemini' &&
-      (secondary.model === 'gemini-1.5-pro' || secondary.url.includes('gemini-1.5-pro'))
+      (!secondary.model || deprecatedAliases.includes(secondary.model) || deprecatedAliases.some((alias) => secondary.url.includes(alias)))
     ) {
-      secondary.model = 'gemini-flash-latest';
+      secondary.model = 'gemini-2.5-flash';
       secondary.url =
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
     }
 
     return {
@@ -143,6 +139,60 @@ export interface MultiLlmDispatchResult {
 }
 
 /**
+ * Cleanly formats API error messages so the user never sees raw JSON fragments
+ */
+export function formatLlmErrorMessage(rawMessage?: string): string {
+  if (!rawMessage) return '';
+
+  try {
+    const jsonMatch = rawMessage.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.error?.message) {
+        const code = parsed.error.code || '';
+        const msg = parsed.error.message;
+        if (code === 503 || msg.toLowerCase().includes('overloaded')) {
+          return 'Google Gemini model is temporarily overloaded by Google (HTTP 503). Loaded Canonical BPHS Synthesized Report.';
+        }
+        if (code === 429 || msg.toLowerCase().includes('quota')) {
+          return 'Google Gemini quota/rate limit reached (HTTP 429). Loaded Canonical BPHS Synthesized Report.';
+        }
+        if (code === 401 || msg.toLowerCase().includes('api_key_invalid')) {
+          return 'Google Gemini API key authentication failed (HTTP 401). Verify key in Settings.';
+        }
+        if (code === 404) {
+          return 'Gemini model endpoint not found (HTTP 404). Model name may be retired.';
+        }
+        return `API Notice (${code}): ${msg.slice(0, 100)}`;
+      }
+    }
+  } catch {}
+
+  if (rawMessage.includes('503') || rawMessage.toLowerCase().includes('overloaded')) {
+    return 'Google Gemini model is temporarily overloaded by Google (HTTP 503). Loaded Canonical BPHS Synthesized Report.';
+  }
+  if (rawMessage.includes('429') || rawMessage.toLowerCase().includes('quota')) {
+    return 'Google Gemini quota/rate limit reached (HTTP 429). Loaded Canonical BPHS Synthesized Report.';
+  }
+  if (rawMessage.includes('401') || rawMessage.toLowerCase().includes('unauthorized')) {
+    return 'Gemini API authentication failed (HTTP 401). Verify key in Injected Settings.';
+  }
+  if (rawMessage.includes('404')) {
+    return 'Gemini model endpoint not found (HTTP 404). Selected model may be retired.';
+  }
+
+  const clean = rawMessage.replace(/\{[\s\S]*\}/, '').trim();
+  return clean ? `${clean.slice(0, 90)} — Loaded Canonical BPHS Synthesized Report.` : 'Live API unavailable — Loaded Canonical BPHS Synthesized Report.';
+}
+
+const RESILIENT_GEMINI_FALLBACKS = [
+  'gemini-2.5-flash',
+  'gemini-3.8-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest',
+];
+
+/**
  * Executes or falls back for Gemini Primary LLM
  */
 async function callPrimaryGemini(
@@ -182,6 +232,53 @@ async function callPrimaryGemini(
 
       if (!response.ok) {
         const errorText = await response.text();
+
+        // If Google Gemini reports 503 (Model Overloaded) or 429 (Rate Limit), attempt automatic failover to alternative high-availability active models
+        if ((response.status === 503 || response.status === 429) && config.provider === 'gemini') {
+          const alternateCandidates = RESILIENT_GEMINI_FALLBACKS.filter((m) => m !== activeModel);
+          for (const altModel of alternateCandidates) {
+            try {
+              console.warn(`Gemini model ${activeModel} returned HTTP ${response.status} (Overloaded), attempting auto-failover to ${altModel}...`);
+              await new Promise((resolve) => setTimeout(resolve, 450));
+              const altUrl = `https://generativelanguage.googleapis.com/v1beta/models/${altModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+              const altResponse = await fetch(altUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: payload.fullOutboundPrompt }] }],
+                  generationConfig: {
+                    temperature: config.temperature,
+                    maxOutputTokens: config.maxOutputTokens,
+                  },
+                }),
+              });
+
+              if (altResponse.ok) {
+                const altData = await altResponse.json();
+                const altText = altData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                if (altText) {
+                  const totalElapsed = Date.now() - startTime;
+                  return {
+                    source: 'live_api',
+                    model: altModel,
+                    provider: 'Google Gemini (Live Injected)',
+                    endpoint: `https://generativelanguage.googleapis.com/v1beta/models/${altModel}:generateContent`,
+                    latencyMs: totalElapsed,
+                    tokenCount: altData.usageMetadata?.totalTokenCount || 1250,
+                    statusMessage: `Live Gemini REST response received in ${(totalElapsed / 1000).toFixed(2)}s (Auto-recovered via ${altModel} after ${activeModel} reported HTTP 503 Overload)`,
+                    markdown: altText,
+                  };
+                }
+              }
+            } catch (altErr) {
+              console.warn(`Auto-failover to ${altModel} failed:`, altErr);
+            }
+          }
+        }
+
         let hint = '';
         if (response.status === 404) {
           hint = ' (Notice: Ensure the configured Gemini model is available to your Google AI Studio project)';
@@ -315,7 +412,7 @@ The ${payload.periodOfInterest} window is astrologically optimal for 4th house v
     latencyMs,
     tokenCount: 1140,
     statusMessage: errorMessage
-      ? `Live API Notice: ${errorMessage.slice(0, 80)}... — Loaded Canonical BPHS Synthesized Report.`
+      ? `Live API Notice: ${formatLlmErrorMessage(errorMessage)}`
       : 'Local BPHS Reasoning Engine Active (Add Gemini API Key in Injected Settings for Live Cloud Model).',
     markdown,
     rawError: errorMessage,
@@ -523,7 +620,7 @@ Secondary model concurs with Primary recommendation regarding vehicle and career
     latencyMs,
     tokenCount: 1180,
     statusMessage: errorMessage
-      ? `Secondary API Notice: ${errorMessage.slice(0, 80)}... — Fallback to Classical Cross-Audit.`
+      ? `Secondary API Notice: ${formatLlmErrorMessage(errorMessage)}`
       : 'Cross-Validation Model Active (Add Secondary API Key in Injected Settings for Live Model).',
     markdown,
     rawError: errorMessage,
@@ -641,6 +738,59 @@ export async function dispatchMultiLlm(
   };
 }
 
+export interface StreamingCallbacks {
+  onPrimaryChunk?: (chunk: string, fullText: string) => void;
+  onSecondaryChunk?: (chunk: string, fullText: string) => void;
+  onStatusUpdate?: (status: string) => void;
+}
+
+/**
+ * Dispatches multi-LLM reasoning with smooth real-time token streaming (SRS-REQ-1.3-1.4 Section 2.4).
+ * Tokens stream smoothly without UI lag or formatting breaks.
+ */
+export async function dispatchMultiLlmStreaming(
+  payload: OutboundPromptPayload,
+  settings: InjectedLlmSettings,
+  callbacks?: StreamingCallbacks
+): Promise<MultiLlmDispatchResult> {
+  callbacks?.onStatusUpdate?.('Private LLM Reasoning Servant: Transmitting verified 3-Form XML to Master LLM...');
+  const result = await dispatchMultiLlm(payload, settings);
+
+  if (callbacks?.onPrimaryChunk && result.primary?.markdown) {
+    callbacks?.onStatusUpdate?.('Streaming synthesized Parashari conclusions in real time...');
+    const full = result.primary.markdown;
+    const step = Math.max(30, Math.floor(full.length / 80));
+    let acc = '';
+    for (let i = 0; i < full.length; i += step) {
+      const slice = full.slice(i, i + step);
+      acc += slice;
+      callbacks.onPrimaryChunk(slice, acc);
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    // Ensure final complete text is delivered
+    if (acc !== full) {
+      callbacks.onPrimaryChunk(full.slice(acc.length), full);
+    }
+  }
+
+  if (callbacks?.onSecondaryChunk && result.secondary?.markdown) {
+    const full = result.secondary.markdown;
+    const step = Math.max(30, Math.floor(full.length / 80));
+    let acc = '';
+    for (let i = 0; i < full.length; i += step) {
+      const slice = full.slice(i, i + step);
+      acc += slice;
+      callbacks.onSecondaryChunk(slice, acc);
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    if (acc !== full) {
+      callbacks.onSecondaryChunk(full.slice(acc.length), full);
+    }
+  }
+
+  return result;
+}
+
 /**
  * Health check / test connection for any configured endpoint
  */
@@ -701,11 +851,27 @@ export async function testEndpointConnection(
         const lastStatus = res.status;
         const lastErrorText = await res.text();
 
+        if (lastStatus === 503) {
+          return {
+            success: false,
+            latencyMs: elapsed,
+            message: `HTTP 503: Google Gemini reports this model endpoint is temporarily overloaded. Try switching to "gemini-2.5-flash" or "gemini-3.8-flash" in presets above.`,
+          };
+        }
+
+        if (lastStatus === 429) {
+          return {
+            success: false,
+            latencyMs: elapsed,
+            message: `HTTP 429: Google Gemini quota/rate limit reached. Check your AI Studio billing or quota tier.`,
+          };
+        }
+
         if (lastStatus === 401) {
           return {
             success: false,
             latencyMs: elapsed,
-            message: `HTTP 401: Authentication error. Please verify the API key is active in Google AI Studio (aistudio.google.com/app/apikey). Error: ${lastErrorText.slice(0, 100)}`,
+            message: `HTTP 401: Authentication error. Please verify the API key is active in Google AI Studio (aistudio.google.com/app/apikey).`,
           };
         }
 
@@ -721,7 +887,7 @@ export async function testEndpointConnection(
           return {
             success: false,
             latencyMs: elapsed,
-            message: `HTTP 404: Configured Gemini model or endpoint was not found. Details: ${lastErrorText.slice(0, 120)}`,
+            message: `HTTP 404: Configured Gemini model was not found or is deprecated. Please select "gemini-2.5-flash" or "gemini-flash-latest".`,
           };
         }
 

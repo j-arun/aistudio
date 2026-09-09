@@ -5,11 +5,13 @@ import { WorkbenchView } from './components/WorkbenchView';
 import { ConfigLogsView } from './components/ConfigLogsView';
 import { AskMeModal } from './components/AskMeModal';
 import { PdfIngestModal } from './components/PdfIngestModal';
+import { ResourceMonitorPane } from './components/ResourceMonitorPane';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'studio' | 'workbench' | 'config'>('studio');
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isAskMeModalOpen, setIsAskMeModalOpen] = useState(false);
+  const [isResourceMonitorOpen, setIsResourceMonitorOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isIngestingPdf, setIsIngestingPdf] = useState(false);
 
@@ -28,6 +30,8 @@ export default function App() {
         onTabChange={(tab) => setActiveTab(tab)}
         onOpenPdfModal={() => setIsPdfModalOpen(true)}
         onOpenAskMeModal={() => setIsAskMeModalOpen(true)}
+        onToggleResourceMonitor={() => setIsResourceMonitorOpen((prev) => !prev)}
+        isResourceMonitorOpen={isResourceMonitorOpen}
         isListening={isListening}
         isIngestingPdf={isIngestingPdf}
       />
@@ -39,13 +43,20 @@ export default function App() {
         </div>
 
         <div style={{ display: activeTab === 'workbench' ? 'block' : 'none' }}>
-          <WorkbenchView />
+          <WorkbenchView onOpenResourceMonitor={() => setIsResourceMonitorOpen(true)} />
         </div>
 
         <div style={{ display: activeTab === 'config' ? 'block' : 'none' }}>
           <ConfigLogsView />
         </div>
       </main>
+
+      {/* Floating 32B Private LLM Resource Monitor Helper Pane */}
+      <ResourceMonitorPane
+        isOpen={isResourceMonitorOpen}
+        onClose={() => setIsResourceMonitorOpen(false)}
+        isFloating={true}
+      />
 
       {/* Component 4: Local Audio & Ephemeris Engine ("Ask Me") Modal */}
       <AskMeModal

@@ -1,11 +1,18 @@
-import React, { useState } from 'react';
-import { Upload, Mic, MicOff, ShieldCheck, Sparkles, SlidersHorizontal, LayoutGrid, Terminal } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Upload, Mic, MicOff, ShieldCheck, Sparkles, SlidersHorizontal, LayoutGrid, Terminal, Activity, Zap } from 'lucide-react';
+import {
+  ResourceMonitorState,
+  getResourceMonitorState,
+  subscribeResourceMonitor,
+} from '../utils/resourceMonitor';
 
 interface HeaderProps {
   activeTab: 'studio' | 'workbench' | 'config';
   onTabChange: (tab: 'studio' | 'workbench' | 'config') => void;
   onOpenPdfModal: () => void;
   onOpenAskMeModal: () => void;
+  onToggleResourceMonitor: () => void;
+  isResourceMonitorOpen: boolean;
   isListening: boolean;
   isIngestingPdf: boolean;
 }
@@ -15,10 +22,20 @@ export const Header: React.FC<HeaderProps> = ({
   onTabChange,
   onOpenPdfModal,
   onOpenAskMeModal,
+  onToggleResourceMonitor,
+  isResourceMonitorOpen,
   isListening,
   isIngestingPdf,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [monitorState, setMonitorState] = useState<ResourceMonitorState>(getResourceMonitorState());
+
+  useEffect(() => {
+    const unsub = subscribeResourceMonitor((state) => {
+      setMonitorState(state);
+    });
+    return () => unsub();
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/95 border-b border-amber-900/30 backdrop-blur-md px-4 lg:px-6 py-2.5 select-none">
@@ -112,6 +129,19 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Action Buttons Trigger */}
           <div className="flex md:hidden items-center gap-2">
             <button
+              onClick={onToggleResourceMonitor}
+              className={`p-2 rounded-lg border text-xs font-mono flex items-center gap-1 ${
+                monitorState.trafficStatus === 'green'
+                  ? 'bg-slate-900 text-emerald-300 border-emerald-700/50'
+                  : monitorState.trafficStatus === 'yellow'
+                  ? 'bg-amber-950/80 text-amber-300 border-amber-500/60'
+                  : 'bg-red-950 text-red-200 border-red-500 animate-pulse'
+              }`}
+              title="32B Resource Monitor"
+            >
+              <Activity className="w-3.5 h-3.5" />
+            </button>
+            <button
               onClick={onOpenAskMeModal}
               className={`p-2 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-all ${
                 isListening
@@ -167,8 +197,48 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Right: HDR-03 PDF Ingest & HDR-04 Ask Me Voice Trigger */}
+        {/* Right: 32B Monitor, HDR-03 PDF Ingest & HDR-04 Ask Me Voice Trigger */}
         <div className="hidden md:flex items-center gap-2.5">
+          {/* 32B Private LLM Resource & VRAM Monitor Trigger Pill */}
+          <button
+            type="button"
+            onClick={onToggleResourceMonitor}
+            className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono font-medium flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
+              monitorState.trafficStatus === 'green'
+                ? isResourceMonitorOpen
+                  ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500 ring-1 ring-emerald-500/50'
+                  : 'bg-slate-900/90 hover:bg-slate-800 text-emerald-300 border-emerald-700/50'
+                : monitorState.trafficStatus === 'yellow'
+                ? isResourceMonitorOpen
+                  ? 'bg-amber-950/90 text-amber-300 border-amber-500 ring-1 ring-amber-500/50 animate-pulse'
+                  : 'bg-amber-950/70 hover:bg-amber-900/70 text-amber-300 border-amber-500/60'
+                : isResourceMonitorOpen
+                ? 'bg-red-950 text-red-200 border-red-500 ring-1 ring-red-500 animate-bounce'
+                : 'bg-red-950/80 hover:bg-red-900 text-red-200 border-red-500/80 animate-pulse'
+            }`}
+            title="32B Model Resource Monitor (VRAM Footprint & keep_alive: 0 Memory Flush)"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                monitorState.trafficStatus === 'green'
+                  ? 'bg-emerald-400'
+                  : monitorState.trafficStatus === 'yellow'
+                  ? 'bg-amber-400'
+                  : 'bg-red-400'
+              }`}
+            />
+            <span className="font-bold">
+              {monitorState.trafficStatus === 'green'
+                ? '32B Offloaded'
+                : monitorState.trafficStatus === 'yellow'
+                ? '32B Active'
+                : '32B High Load'}
+            </span>
+            <span className="text-[10px] text-slate-400 border-l border-slate-700 pl-1">
+              {monitorState.ramUtilizationPct}% RAM
+            </span>
+          </button>
+
           {/* HDR-03 PDF Ingest Trigger Button */}
           <button
             onClick={onOpenPdfModal}

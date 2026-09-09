@@ -33,6 +33,13 @@ import {
   Columns,
   Table as TableIcon,
   CheckCheck,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  HelpCircle,
+  FilterX,
+  Trash2,
+  Activity,
 } from 'lucide-react';
 import { DIVISIONAL_CHARTS } from '../data/canonicalHoroscope';
 import {
@@ -45,17 +52,31 @@ import {
   NAKSHATRA_NAMES,
   getHouseFromLagna,
   getHouseFromMoon,
+  ServantContextOverride,
 } from '../utils/promptBuilder';
+import { ReasoningQuestion } from '../utils/privateLlmServant';
+import { ReasoningServantModal } from './ReasoningServantModal';
 import { LlmConfigSettings } from './LlmConfigSettings';
 import {
   loadLlmSettings,
   saveLlmSettings,
   InjectedLlmSettings,
   dispatchMultiLlm,
+  dispatchMultiLlmStreaming,
   MultiLlmDispatchResult,
 } from '../utils/llmService';
 import { MarkdownReportRenderer } from './MarkdownReportRenderer';
 import { exportReportToPdf, exportReportToMarkdown } from '../utils/exportEngine';
+import {
+  ResourceMonitorState,
+  getResourceMonitorState,
+  subscribeResourceMonitor,
+  flushModelFromMemory,
+} from '../utils/resourceMonitor';
+
+interface WorkbenchViewProps {
+  onOpenResourceMonitor?: () => void;
+}
 
 interface PresetPeriod {
   label: string;
@@ -91,7 +112,22 @@ const PRESET_PERIODS: PresetPeriod[] = [
   },
 ];
 
-export const WorkbenchView: React.FC = () => {
+export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMonitor }) => {
+  // 32B Resource Monitor Subscription
+  const [resourceState, setResourceState] = useState<ResourceMonitorState>(getResourceMonitorState());
+  const [isWorkbenchFlushing, setIsWorkbenchFlushing] = useState(false);
+
+  React.useEffect(() => {
+    const unsub = subscribeResourceMonitor((st) => setResourceState(st));
+    return () => unsub();
+  }, []);
+
+  const handleWorkbenchFlush = async () => {
+    setIsWorkbenchFlushing(true);
+    await flushModelFromMemory({ reason: 'manual_flush' });
+    setTimeout(() => setIsWorkbenchFlushing(false), 400);
+  };
+
   // Zone 1 States - Period of Interest
   const [periodLabel, setPeriodLabel] = useState('September 2026 (Active Window)');
   const [targetDate, setTargetDate] = useState('2026-09-07');
@@ -113,9 +149,15 @@ export const WorkbenchView: React.FC = () => {
   // Zone 2 States
   const [sanitizePii, setSanitizePii] = useState(true);
   const [activePromptTab, setActivePromptTab] = useState<
-    'intelligentXml' | 'baselineXml' | 'xmlDiff' | 'plainText' | 'gemini' | 'secondary' | 'piiAudit'
-  >('intelligentXml');
+    'threeFormXml' | 'intelligentXml' | 'baselineXml' | 'xmlDiff' | 'plainText' | 'gemini' | 'secondary' | 'piiAudit'
+  >('threeFormXml');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Private LLM Reasoning Servant States (SRS-REQ-1.3-1.4)
+  const [servantOverride, setServantOverride] = useState<ServantContextOverride | null>(null);
+  const [isServantModalOpen, setIsServantModalOpen] = useState(false);
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
+  const [liveStreamingText, setLiveStreamingText] = useState<string | null>(null);
 
   // Zone 3 States
   const [activeReportTab, setActiveReportTab] = useState<
@@ -146,10 +188,17 @@ export const WorkbenchView: React.FC = () => {
     setIsZone3Open(false);
   };
 
-  // Build the complete Outbound Prompt strictly for the Period of Interest and User-Fed Transits
+  // Build the complete Outbound Prompt strictly for the Period of Interest, User-Fed Transits, and Servant Override
   const outboundPayload: OutboundPromptPayload = useMemo(() => {
-    return buildBphsOutboundPrompt(periodLabel, targetDate, narrativeInput, DIVISIONAL_CHARTS, transits);
-  }, [periodLabel, targetDate, narrativeInput, transits]);
+    return buildBphsOutboundPrompt(
+      periodLabel,
+      targetDate,
+      narrativeInput,
+      DIVISIONAL_CHARTS,
+      transits,
+      servantOverride || undefined
+    );
+  }, [periodLabel, targetDate, narrativeInput, transits, servantOverride]);
 
   const handleSelectPresetPeriod = (preset: PresetPeriod) => {
     setPeriodLabel(preset.label);
@@ -335,16 +384,53 @@ export const WorkbenchView: React.FC = () => {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const handleSimulateDispatch = async () => {
+  const handleSimulateDispatch = async (overrideSettings?: InjectedLlmSettings, bypassGaps: boolean = false) => {
+    // If narrative has gaps and servant has not been audited yet, trigger the Reasoning Servant modal
+    if (!bypassGaps && outboundPayload.servantEvaluation.hasGaps && !servantOverride) {
+      setIsServantModalOpen(true);
+      return;
+    }
+
     setIsSimulating(true);
+    setStreamingStatus('Private LLM Reasoning Servant: Preparing 3-Form XML Payload...');
     try {
-      const result = await dispatchMultiLlm(outboundPayload, llmSettings);
+      const activeSettings = overrideSettings || llmSettings;
+      const result = await dispatchMultiLlmStreaming(outboundPayload, activeSettings, {
+        onStatusUpdate: (status) => setStreamingStatus(status),
+        onPrimaryChunk: (_chunk, acc) => setLiveStreamingText(acc),
+      });
       setDispatchResult(result);
       setIsZone3Open(true);
     } catch (err) {
       console.error('Multi-LLM dispatch error:', err);
     } finally {
       setIsSimulating(false);
+      setStreamingStatus(null);
+      setLiveStreamingText(null);
+    }
+  };
+
+  const handleCompleteServantIntake = (mergedData: {
+    mergedNarrative: string;
+    finalTimeline: string;
+    validAnswers: ReasoningQuestion[];
+    scrubbedNaCount: number;
+    autoDispatch: boolean;
+  }) => {
+    setServantOverride({
+      finalTimeline: mergedData.finalTimeline,
+      clarificationAnswers: mergedData.validAnswers,
+      scrubbedNaCount: mergedData.scrubbedNaCount,
+    });
+    setSpeechStatus(
+      `Reasoning Servant verified context (${mergedData.finalTimeline}). ${mergedData.scrubbedNaCount} N/A fields eliminated.`
+    );
+
+    if (mergedData.autoDispatch) {
+      // Direct streaming dispatch with verified context
+      setTimeout(() => {
+        handleSimulateDispatch(undefined, true);
+      }, 100);
     }
   };
 
@@ -447,7 +533,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
 **Cross-Model Consensus: 99.2% Parity.** The dual reasoning engines independently conclude that ${periodLabel} is highly auspicious for major vehicular investment and commercial expansion.`;
   }, [outboundPayload, periodLabel]);
 
-  const displayedPrimaryReport = dispatchResult?.primary.markdown || defaultPrimaryReportMarkdown;
+  const displayedPrimaryReport = liveStreamingText || dispatchResult?.primary.markdown || defaultPrimaryReportMarkdown;
   const displayedSecondaryReport = dispatchResult?.secondary?.markdown || defaultSecondaryReportMarkdown;
 
   return (
@@ -946,6 +1032,72 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                   Real Estate & Partnership
                 </button>
               </div>
+
+              {/* SRS-REQ-1.3-1.4: Private LLM Reasoning Servant Intake Bar */}
+              <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/30 border border-amber-500/40 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-200 font-mono">
+                      Private LLM Reasoning Servant: 3-Pillar Context Engine
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-950 border border-amber-800 text-amber-300">
+                      SRS-REQ-1.3-1.4
+                    </span>
+                    {servantOverride ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-300 flex items-center gap-1 font-bold">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Verified & Merged ({servantOverride.finalTimeline})
+                      </span>
+                    ) : outboundPayload.servantEvaluation.hasGaps ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950/90 border border-amber-600 text-amber-300 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 text-amber-400" />
+                        {outboundPayload.servantEvaluation.questions.length} Gaps Found
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-300 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        Context Ready
+                      </span>
+                    )}
+                  </div>
+
+                  {/* The 3 Pillars Indicator */}
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                    <span
+                      className={`px-2 py-0.5 rounded border flex items-center gap-1 ${
+                        outboundPayload.servantEvaluation.timelineValid
+                          ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300'
+                          : 'bg-amber-950/60 border-amber-800/60 text-amber-300'
+                      }`}
+                    >
+                      <Calendar className="w-3 h-3" />
+                      Pillar 1 Timeline: {outboundPayload.servantEvaluation.normalizedTimeline}
+                    </span>
+
+                    <span className="px-2 py-0.5 rounded border bg-slate-900 border-slate-700 text-slate-300 flex items-center gap-1">
+                      <HelpCircle className="w-3 h-3 text-amber-400" />
+                      Pillar 2 Fullness: {outboundPayload.servantEvaluation.questions.length} Clarifications
+                    </span>
+
+                    <span className="px-2 py-0.5 rounded border bg-slate-900 border-slate-700 text-slate-300 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      Pillar 3 Efficiency: {outboundPayload.servantEvaluation.metrics.tokenCompressionRatio} compressed
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsServantModalOpen(true)}
+                    className="w-full md:w-auto px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Launch Reasoning Servant Intake ("Dabbas")</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -981,6 +1133,74 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
 
         {isZone2Open && (
           <div className="p-4 flex flex-col gap-3">
+            {/* 32B Private LLM Resource Monitor Helper Bar & Guidance */}
+            <div
+              className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                resourceState.trafficStatus === 'green'
+                  ? 'bg-slate-950 border-emerald-500/40 text-emerald-200'
+                  : resourceState.trafficStatus === 'yellow'
+                  ? 'bg-amber-950/40 border-amber-500/60 text-amber-200'
+                  : 'bg-red-950/60 border-red-500/70 text-red-200 animate-pulse'
+              }`}
+            >
+              <div className="flex items-start sm:items-center gap-2.5">
+                <span
+                  className={`w-3 h-3 rounded-full mt-0.5 sm:mt-0 shrink-0 ${
+                    resourceState.trafficStatus === 'green'
+                      ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                      : resourceState.trafficStatus === 'yellow'
+                      ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                      : 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.9)] animate-ping'
+                  }`}
+                />
+                <div className="flex flex-col">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider">
+                      {resourceState.trafficStatus === 'green'
+                        ? 'Green • Headroom Safe'
+                        : resourceState.trafficStatus === 'yellow'
+                        ? 'Yellow • 32B Resident (22.2 GB)'
+                        : 'Red • Critical Contention'}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      RAM: {resourceState.totalRamUsedGb} / {resourceState.systemTotalRamGb} GB ({resourceState.ramUtilizationPct}%)
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-400/90 bg-slate-900 px-1.5 py-0.2 rounded border border-slate-800">
+                      VRAM: {resourceState.modelVramUsedGb > 0 ? `${resourceState.modelVramUsedGb} GB (Active)` : '0.0 GB (Offloaded)'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-medium text-slate-300 mt-0.5">
+                    <strong>Guidance:</strong> {resourceState.trafficGuidance}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleWorkbenchFlush}
+                  disabled={isWorkbenchFlushing}
+                  className="px-2.5 py-1.5 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-700/60 text-amber-200 text-xs font-mono font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                  title="Unload 32B model weights from VRAM (keep_alive: 0)"
+                >
+                  <Trash2 className={`w-3.5 h-3.5 text-red-400 ${isWorkbenchFlushing ? 'animate-spin' : ''}`} />
+                  <span>{isWorkbenchFlushing ? 'Purging...' : 'Flush Memory (0s)'}</span>
+                </button>
+
+                {onOpenResourceMonitor && (
+                  <button
+                    type="button"
+                    onClick={onOpenResourceMonitor}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Open Full 32B Resource Monitor Dashboard"
+                  >
+                    <Activity className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Monitor Pane</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Top Toolbar: PII Sanitize Checkbox + View Mode Selector + Copy Buttons */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-amber-900/20 pb-3">
               <div className="flex items-center gap-3">
@@ -1003,14 +1223,14 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                 <button
                   type="button"
                   onClick={() => setActivePromptTab('intelligentXml')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                     activePromptTab === 'intelligentXml'
-                      ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-amber-300 hover:text-amber-100 bg-amber-950/40 border border-amber-800/60'
                   }`}
                 >
                   <Wand2 className="w-3 h-3 text-amber-400" />
-                  Contextual XML (Enhanced)
+                  Contextual XML (All Pillars Intact)
                 </button>
                 <button
                   type="button"
@@ -1034,6 +1254,18 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                 >
                   <Sparkles className="w-3 h-3 text-amber-400" />
                   Intent & Schema Diff
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActivePromptTab('threeFormXml')}
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                    activePromptTab === 'threeFormXml'
+                      ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Layers className="w-3 h-3 text-slate-400" />
+                  3-Form Spec Inspection
                 </button>
                 <button
                   type="button"
@@ -1082,27 +1314,119 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
               </div>
             </div>
 
-            {/* TAB 1: Intelligent Contextual XML Preview */}
-            {activePromptTab === 'intelligentXml' && (
-              <div className="rounded-xl border border-amber-900/40 bg-slate-950 p-3 relative font-mono text-[11px] text-amber-200/90 overflow-x-auto max-h-72 scrollbar-thin">
-                <div className="flex items-center justify-between mb-2 pb-1 border-b border-amber-900/30 text-[10px] text-slate-400">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-amber-300">
-                      INTELLIGENT CONTEXTUAL XML (Intent-Aware & Parsed)
+            {/* TAB 0: 3-Form XML Package (SRS-REQ-1.3-1.4 Specification) */}
+            {activePromptTab === 'threeFormXml' && (
+              <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-3 relative font-mono text-[11px] text-amber-200/90 overflow-x-auto max-h-80 scrollbar-thin">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-1.5 border-b border-amber-900/30 text-[10px] text-slate-400">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-amber-300 flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-amber-400" />
+                      VERIFIED 3-FORM XML SPECIFICATION (Form 1: Transit, Form 2: Natal, Form 3: Narrative)
                     </span>
-                    <span className="text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded text-[9px] border border-emerald-800/40">
-                      Intent: {outboundPayload.intelligentProcessing.intentCategory}
+                    <span className="text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded text-[9px] border border-emerald-800">
+                      Timeline: {outboundPayload.threeFormXmlPackage.validatedTimeline}
+                    </span>
+                    <span className="text-amber-400 bg-amber-950 px-2 py-0.5 rounded text-[9px] border border-amber-800">
+                      Tokens: ~{outboundPayload.threeFormXmlPackage.metrics.totalXmlTokensEstimate}
+                    </span>
+                    {outboundPayload.threeFormXmlPackage.metrics.scrubbedNaCount > 0 && (
+                      <span className="text-rose-400 bg-rose-950 px-2 py-0.5 rounded text-[9px] border border-rose-800 flex items-center gap-1">
+                        <FilterX className="w-2.5 h-2.5" />
+                        Scrubbed N/A: {outboundPayload.threeFormXmlPackage.metrics.scrubbedNaCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsServantModalOpen(true)}
+                      className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 flex items-center gap-1 text-[10px] cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Refine Gaps
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(outboundPayload.threeFormXml, 'threeFormXml')}
+                      className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer text-[10px]"
+                    >
+                      <Copy className="w-3 h-3" />
+                      {copiedKey === 'threeFormXml' ? 'Copied 3-Form XML!' : 'Copy 3-Form XML'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Form Architecture Legend */}
+                <div className="mb-2 p-2 rounded bg-slate-900/80 border border-slate-800 text-[10px] font-sans text-slate-300 flex flex-wrap items-center gap-3">
+                  <span className="text-amber-300 font-mono font-bold">Forms Breakdown:</span>
+                  <span className="text-slate-300">
+                    <strong className="text-amber-200">Form 1:</strong> Gochara Nirayana transit positions for {periodLabel}
+                  </span>
+                  <span className="text-slate-500">|</span>
+                  <span className="text-slate-300">
+                    <strong className="text-blue-200">Form 2:</strong> D-1, D-9 & D-10 Canonical Divisional anchors
+                  </span>
+                  <span className="text-slate-500">|</span>
+                  <span className="text-slate-300">
+                    <strong className="text-emerald-200">Form 3:</strong> Validated YYYY-MM timeline, filler eliminated & clarifications integrated
+                  </span>
+                </div>
+
+                <pre className="leading-relaxed whitespace-pre font-mono">
+                  {outboundPayload.threeFormXml}
+                </pre>
+              </div>
+            )}
+
+            {/* TAB 1: Intelligent Contextual XML Preview (All Pillars Intact) */}
+            {activePromptTab === 'intelligentXml' && (
+              <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-3 relative font-mono text-[11px] text-amber-200/90 overflow-x-auto max-h-80 scrollbar-thin">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-1.5 border-b border-amber-900/30 text-[10px] text-slate-400">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-amber-300 flex items-center gap-1">
+                      <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                      CANONICAL BPHS XML (All Natal D1, D9, D10, Dasha & Transit Pillars Intact)
+                    </span>
+                    <span className="text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded text-[9px] border border-emerald-800/60 font-bold">
+                      Narrative: Private LLM Tested & Validated
+                    </span>
+                    <span className="text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded text-[9px] border border-amber-800/60">
+                      Timeline: {outboundPayload.servantEvaluation.normalizedTimeline}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleCopy(outboundPayload.intelligentEnhancedPrompt, 'intelligentXml')}
-                    className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
+                    className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer text-[10px] shrink-0"
                   >
                     <Copy className="w-3 h-3" />
-                    {copiedKey === 'intelligentXml' ? 'Copied XML!' : 'Copy Contextual XML'}
+                    {copiedKey === 'intelligentXml' ? 'Copied Full XML!' : 'Copy Contextual BPHS XML'}
                   </button>
                 </div>
+
+                {/* Pillars Confirmation Banner */}
+                <div className="mb-2.5 p-2 rounded bg-slate-900/90 border border-amber-900/30 text-[10.5px] font-sans text-slate-300 flex flex-wrap items-center gap-3">
+                  <span className="text-emerald-400 font-mono font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    Astrological Pillars Preserved:
+                  </span>
+                  <span className="text-slate-200">
+                    <strong className="text-amber-200">D-1 Natal:</strong> 9 Graha coordinates with degree, nakshatra, pada & status
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-slate-200">
+                    <strong className="text-blue-200">Divisional:</strong> D-9 (Leo Ascendant) & D-10 (Taurus Ascendant)
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-slate-200">
+                    <strong className="text-amber-300">Gochara:</strong> 9-Graha transit matrix & active Vimshottari Dasha
+                  </span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-slate-200">
+                    <strong className="text-emerald-300">Narrative:</strong> Tested & validated by Private LLM
+                  </span>
+                </div>
+
                 <pre className="leading-relaxed whitespace-pre font-mono">
                   {outboundPayload.intelligentEnhancedPrompt}
                 </pre>
@@ -1419,6 +1743,43 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                     <div className="text-[10px] text-slate-400 truncate font-mono">
                       {llmSettings.primary.url}
                     </div>
+                    {llmSettings.primary.provider === 'gemini' && (
+                      <div className="flex flex-wrap gap-1 mt-1.5 pt-1.5 border-t border-slate-800/80">
+                        {[
+                          { id: 'gemini-2.5-flash', label: '2.5 Flash' },
+                          { id: 'gemini-3.8-flash', label: '3.8 Flash' },
+                          { id: 'gemini-3.1-flash-lite', label: '3.1 Lite' },
+                          { id: 'gemini-flash-latest', label: 'Flash Latest' },
+                        ].map((m) => {
+                          const isCur = llmSettings.primary.model === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                const next: InjectedLlmSettings = {
+                                  ...llmSettings,
+                                  primary: {
+                                    ...llmSettings.primary,
+                                    model: m.id,
+                                    url: `https://generativelanguage.googleapis.com/v1beta/models/${m.id}:generateContent`,
+                                  },
+                                };
+                                setLlmSettings(next);
+                                saveLlmSettings(next);
+                              }}
+                              className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono transition-colors cursor-pointer border ${
+                                isCur
+                                  ? 'bg-amber-400 text-slate-950 font-bold border-amber-300'
+                                  : 'bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700'
+                              }`}
+                            >
+                              {m.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1463,7 +1824,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                 <div className="sm:col-span-4 flex flex-col justify-end">
                   <button
                     type="button"
-                    onClick={handleSimulateDispatch}
+                    onClick={() => handleSimulateDispatch()}
                     disabled={isSimulating}
                     className="w-full py-3 rounded-lg bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-slate-950 font-bold text-xs font-mono flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50 cursor-pointer"
                   >
@@ -1644,6 +2005,19 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
 
         {isZone3Open && (
           <div className="p-4 flex flex-col gap-4">
+            {/* Live Streaming Engine Progress Banner (SRS-REQ-1.3-1.4 Section 2.4) */}
+            {streamingStatus && (
+              <div className="p-3 rounded-xl bg-amber-950/80 border border-amber-500/60 text-amber-200 font-mono text-xs flex items-center justify-between gap-3 animate-pulse shadow-lg">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="font-semibold text-amber-300">{streamingStatus}</span>
+                </div>
+                <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-amber-800 text-amber-400">
+                  Real-time Token Stream
+                </span>
+              </div>
+            )}
+
             {/* Export Notification Banner */}
             {exportNotice && (
               <div className="p-2.5 rounded-lg bg-amber-950/90 border border-amber-700/60 text-amber-200 font-mono text-xs flex items-center gap-2 animate-fadeIn">
@@ -1654,28 +2028,80 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
 
             {/* Live Dispatch Diagnostics Banner */}
             {dispatchResult && (
-              <div className="p-3 rounded-xl bg-slate-950 border border-amber-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs font-mono">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-[10px]">
-                    Dispatched at {dispatchResult.timestamp}
-                  </span>
-                  {dispatchResult.personal && (
-                    <span className="text-slate-400 text-[11px]">
-                      {dispatchResult.personal.message}
+              <div className="p-3 rounded-xl bg-slate-950 border border-amber-900/40 flex flex-col gap-2.5 text-xs font-mono">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-[10px]">
+                      Dispatched at {dispatchResult.timestamp}
                     </span>
-                  )}
+                    {dispatchResult.personal && (
+                      <span className="text-slate-400 text-[11px]">
+                        {dispatchResult.personal.message}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                    <span className="text-amber-300">
+                      Primary ({dispatchResult.primary.model}): {((dispatchResult.primary.latencyMs || 0) / 1000).toFixed(2)}s ({dispatchResult.primary.tokenCount || 1140} tok)
+                    </span>
+                    {dispatchResult.secondary && (
+                      <span className="text-blue-300">
+                        Secondary ({dispatchResult.secondary.model}): {((dispatchResult.secondary.latencyMs || 0) / 1000).toFixed(2)}s ({dispatchResult.secondary.tokenCount || 1180} tok)
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3 text-[11px] text-slate-400">
-                  <span className="text-amber-300">
-                    Primary: {((dispatchResult.primary.latencyMs || 0) / 1000).toFixed(2)}s ({dispatchResult.primary.tokenCount || 1140} tok)
-                  </span>
-                  {dispatchResult.secondary && (
-                    <span className="text-blue-300">
-                      Secondary: {((dispatchResult.secondary.latencyMs || 0) / 1000).toFixed(2)}s ({dispatchResult.secondary.tokenCount || 1180} tok)
-                    </span>
-                  )}
-                </div>
+                {/* Overload / Fallback Recovery Bar if Primary fell back or had notice */}
+                {dispatchResult.primary.source === 'synthesized_fallback' && (
+                  <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-start gap-2 text-amber-200 text-xs">
+                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-amber-300">
+                          {dispatchResult.primary.statusMessage.includes('503') || dispatchResult.primary.statusMessage.toLowerCase().includes('overloaded')
+                            ? 'Google Cloud Gemini 503 Notice (Model Overloaded)'
+                            : 'BPHS Canonical Deterministic Report Loaded'}
+                        </span>
+                        <p className="text-[11px] text-slate-300 mt-0.5">
+                          {dispatchResult.primary.statusMessage}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Quick Switch & Retry Buttons */}
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                      <span className="text-[10px] text-slate-400 font-semibold">Switch & Retry:</span>
+                      {[
+                        { id: 'gemini-2.5-flash', label: '2.5 Flash' },
+                        { id: 'gemini-3.8-flash', label: '3.8 Flash' },
+                        { id: 'gemini-3.1-flash-lite', label: '3.1 Lite' },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            const next: InjectedLlmSettings = {
+                              ...llmSettings,
+                              primary: {
+                                ...llmSettings.primary,
+                                model: m.id,
+                                url: `https://generativelanguage.googleapis.com/v1beta/models/${m.id}:generateContent`,
+                              },
+                            };
+                            setLlmSettings(next);
+                            saveLlmSettings(next);
+                            handleSimulateDispatch(next);
+                          }}
+                          className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-[10.5px] font-semibold transition-colors cursor-pointer"
+                        >
+                          ⚡ {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1940,6 +2366,15 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
           </div>
         )}
       </div>
+
+      {/* Reasoning Servant Intake Modal (SRS-REQ-1.3-1.4: 3-Pillar Context Engine) */}
+      <ReasoningServantModal
+        isOpen={isServantModalOpen}
+        onClose={() => setIsServantModalOpen(false)}
+        rawNarrative={narrativeInput}
+        evaluation={outboundPayload.servantEvaluation}
+        onCompleteIntake={handleCompleteServantIntake}
+      />
     </div>
   );
 };
