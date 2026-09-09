@@ -104,7 +104,7 @@ export const WorkbenchView: React.FC = () => {
 
   // Zone 2 States
   const [sanitizePii, setSanitizePii] = useState(true);
-  const [activePromptTab, setActivePromptTab] = useState<'xml' | 'gemini' | 'secondary' | 'piiAudit'>('xml');
+  const [activePromptTab, setActivePromptTab] = useState<'xml' | 'plainText' | 'gemini' | 'secondary' | 'piiAudit'>('xml');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Zone 3 States
@@ -909,6 +909,17 @@ export const WorkbenchView: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setActivePromptTab('plainText')}
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                    activePromptTab === 'plainText'
+                      ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Plain Text Prompt
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActivePromptTab('secondary')}
                   className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
                     activePromptTab === 'secondary'
@@ -974,6 +985,32 @@ export const WorkbenchView: React.FC = () => {
                 <pre className="leading-relaxed whitespace-pre font-mono">
                   {JSON.stringify(outboundPayload.primaryGeminiPayload, null, 2)}
                 </pre>
+              </div>
+            )}
+
+            {/* TAB 3: Exact Prompt Text Sent to Gemini */}
+            {activePromptTab === 'plainText' && (
+              <div className="rounded-xl border border-amber-900/40 bg-slate-950 p-3 relative font-mono text-[11px] text-amber-200/90">
+                <div className="flex items-center justify-between mb-2 pb-1 border-b border-amber-900/30 text-[10px] text-slate-400">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-bold text-amber-300">EXACT PROMPT TEXT SENT TO GEMINI</span>
+                    <span className="text-slate-500">Copied verbatim from the Gemini request text body</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(outboundPayload.fullOutboundPrompt, 'plainText')}
+                    className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" />
+                    {copiedKey === 'plainText' ? 'Copied Prompt!' : 'Copy Plain Text'}
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  value={outboundPayload.fullOutboundPrompt}
+                  aria-label="Exact prompt text sent to Gemini"
+                  className="w-full h-72 resize-y bg-transparent text-amber-200/90 leading-relaxed whitespace-pre font-mono outline-none scrollbar-thin"
+                />
               </div>
             )}
 
