@@ -1,9 +1,9 @@
 // Document Version 1.1: Export Engine for BPHS Astrological Synthesis
-// Supports High-Fidelity PDF Generation via jsPDF and Clean Markdown (.md) Export
+// Pure zero-dependency implementation (no jspdf or external packages required)
+// Supports High-Fidelity Print-to-PDF / Standalone Report Export and Clean Markdown (.md) Export
 
-import { jsPDF } from 'jspdf';
 import { OutboundPromptPayload } from './promptBuilder';
-import { MultiLlmDispatchResult, SingleLlmResult } from './llmService';
+import { SingleLlmResult } from './llmService';
 
 export interface ReportExportData {
   title: string;
@@ -23,279 +23,353 @@ export interface ReportExportData {
 }
 
 /**
- * Clean markdown text to plain readable lines for PDF rendering
+ * Clean markdown text to readable HTML paragraphs/headers
  */
-function cleanMarkdownForPdf(md: string): string[] {
-  return md
-    .split('\n')
-    .map((line) => {
-      // Clean headers
-      let l = line.replace(/^#{1,6}\s+/, '');
-      // Clean bold/italic
-      l = l.replace(/\*\*(.*?)\*\*/g, '$1');
-      l = l.replace(/\*(.*?)\*/g, '$1');
-      l = l.replace(/__(.*?)__/g, '$1');
-      l = l.replace(/_(.*?)_/g, '$1');
-      // Clean inline code
-      l = l.replace(/`([^`]+)`/g, '$1');
-      // Clean links
-      l = l.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-      return l;
-    });
+function markdownToHtml(md: string): string {
+  const lines = md.split('\n');
+  const htmlParts: string[] = [];
+  let inList = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+
+    if (!trimmed) {
+      if (inList) {
+        htmlParts.push('</ul>');
+        inList = false;
+      }
+      continue;
+    }
+
+    // List item
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (!inList) {
+        htmlParts.push('<ul style="margin: 6px 0; padding-left: 20px; font-size: 11px; color: #334155;">');
+        inList = true;
+      }
+      let content = trimmed.slice(2);
+      content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      content = content.replace(/`([^`]+)`/g, '<code style="background: #f1f5f9; padding: 2px 4px; border-radius: 4px; font-family: monospace;">$1</code>');
+      htmlParts.push(`<li style="margin-bottom: 4px;">${content}</li>`);
+      continue;
+    }
+
+    if (inList) {
+      htmlParts.push('</ul>');
+      inList = false;
+    }
+
+    // Headers
+    if (trimmed.startsWith('# ')) {
+      const heading = trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '$1');
+      htmlParts.push(
+        `<h2 style="font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #92400e; border-bottom: 1.5px solid #fed7aa; padding-bottom: 4px; margin-top: 14px; margin-bottom: 8px;">${heading}</h2>`
+      );
+      continue;
+    }
+    if (trimmed.startsWith('## ')) {
+      const heading = trimmed.slice(3).replace(/\*\*(.*?)\*\*/g, '$1');
+      htmlParts.push(
+        `<h3 style="font-family: 'Courier New', monospace; font-size: 12.5px; font-weight: bold; color: #78350f; margin-top: 10px; margin-bottom: 6px;">${heading}</h3>`
+      );
+      continue;
+    }
+
+    // Blockquote
+    if (trimmed.startsWith('>')) {
+      let quote = trimmed.replace(/^>\s?/, '');
+      quote = quote.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      quote = quote.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      htmlParts.push(
+        `<blockquote style="border-left: 3px solid #f59e0b; background: #fffbeb; padding: 8px 12px; margin: 8px 0; font-size: 11px; color: #92400e; font-style: italic;">${quote}</blockquote>`
+      );
+      continue;
+    }
+
+    // Paragraph
+    let pContent = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    pContent = pContent.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    pContent = pContent.replace(/`([^`]+)`/g, '<code style="background: #f1f5f9; padding: 2px 4px; border-radius: 4px; font-family: monospace;">$1</code>');
+    htmlParts.push(`<p style="font-size: 11.5px; line-height: 1.6; color: #334155; margin: 6px 0;">${pContent}</p>`);
+  }
+
+  if (inList) {
+    htmlParts.push('</ul>');
+  }
+
+  return htmlParts.join('\n');
 }
 
 /**
- * Generates and downloads a formal, comprehensive PDF Report
+ * Generates and triggers high-fidelity print-to-PDF with crisp formatting,
+ * metadata table, transit matrix, and synthesis report.
  */
 export function exportReportToPdf(data: ReportExportData): void {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  const primaryModelName = data.primaryResult?.model || 'Gemini 1.5 Pro';
+  const primaryProvider = data.primaryResult?.provider || 'Google Gemini';
+  const latencySec = ((data.primaryResult?.latencyMs || 850) / 1000).toFixed(2);
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 18;
-  const contentWidth = pageWidth - margin * 2;
-  let cursorY = 20;
+  // Transit Rows HTML
+  const transitRowsHtml = (data.outboundPayload?.transitsForPeriod || [])
+    .slice(0, 9)
+    .map(
+      (t, i) => `
+      <tr style="background: ${i % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+        <td style="padding: 5px 8px; font-weight: bold; color: #0f172a; border-bottom: 1px solid #e2e8f0;">${t.planet}</td>
+        <td style="padding: 5px 8px; color: #334155; border-bottom: 1px solid #e2e8f0;">${t.transitSign}</td>
+        <td style="padding: 5px 8px; color: #475569; font-family: monospace; border-bottom: 1px solid #e2e8f0;">${t.degree} (${t.nakshatra} p${t.pada})</td>
+        <td style="padding: 5px 8px; color: #b45309; font-weight: 600; border-bottom: 1px solid #e2e8f0;">${t.houseFromLagna}th</td>
+        <td style="padding: 5px 8px; color: #1d4ed8; border-bottom: 1px solid #e2e8f0;">${t.houseFromMoon}th</td>
+        <td style="padding: 5px 8px; color: #334155; border-bottom: 1px solid #e2e8f0; font-size: 10px;">${t.classicalStatus}</td>
+      </tr>
+    `
+    )
+    .join('');
 
-  // Helper to add a new page if needed
-  const ensureSpace = (neededHeight: number) => {
-    if (cursorY + neededHeight > pageHeight - margin) {
-      doc.addPage();
-      cursorY = 20;
-      // Add subtle top border for subsequent pages
-      doc.setDrawColor(220, 220, 225);
-      doc.setLineWidth(0.3);
-      doc.line(margin, 12, pageWidth - margin, 12);
-      doc.setFontSize(8);
-      doc.setTextColor(140, 140, 150);
-      doc.text('BPHS Astrological Synthesis Report — Document 1.1 Specification', margin, 10);
-    }
-  };
-
-  // Header Banner
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(margin, cursorY, contentWidth, 24, 'F');
-
-  doc.setTextColor(251, 191, 36); // amber-400
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text('MAHARISHI PARASHARA BPHS SYNTHESIS ENGINE', margin + 6, cursorY + 9);
-
-  doc.setTextColor(226, 232, 240); // slate-200
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Canonical Horoscopic Evaluation & Multi-LLM Gochara Synthesis Report', margin + 6, cursorY + 16);
-
-  doc.setFontSize(7.5);
-  doc.setTextColor(148, 163, 184); // slate-400
-  doc.text(`Generated: ${new Date().toLocaleString()} | Version: 1.1`, margin + 6, cursorY + 20);
-
-  cursorY += 30;
-
-  // Metadata Table Section
-  ensureSpace(35);
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(margin, cursorY, contentWidth, 28, 2, 2, 'FD');
-
-  doc.setFontSize(9);
-  doc.setTextColor(30, 41, 59);
-  doc.setFont('helvetica', 'bold');
-  doc.text('DOCUMENT OPERATIONAL METADATA', margin + 4, cursorY + 6);
-
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-
-  const col1X = margin + 4;
-  const col2X = margin + 70;
-  const col3X = margin + 130;
-
-  doc.text(`Period of Interest: ${data.periodOfInterest}`, col1X, cursorY + 13);
-  doc.text(`Target Anchor Date: ${data.anchorDate}`, col1X, cursorY + 19);
-  doc.text(`Anonymized Native ID: ${data.nativeId || 'CANONICAL-NATIVE-BPHS-01'}`, col1X, cursorY + 25);
-
-  doc.text(`Active Dasha: ${data.dashaInfo}`, col2X, cursorY + 13);
-  doc.text(`Lagna: Sagittarius (Dhanusu 16°33')`, col2X, cursorY + 19);
-  doc.text(`Janma Rasi: Scorpio (Vrishchika 06°08')`, col2X, cursorY + 25);
-
-  const primaryModelName = data.primaryResult?.model || 'Gemini Flash Latest';
-  doc.text(`Primary LLM: ${primaryModelName}`, col3X, cursorY + 13);
-  doc.text(`Latency: ${((data.primaryResult?.latencyMs || 850) / 1000).toFixed(2)}s`, col3X, cursorY + 19);
-  doc.text(`Status: Verified BPHS Conforming`, col3X, cursorY + 25);
-
-  cursorY += 34;
-
-  // Section: Intelligent Intent & Preprocessed Inquiry
-  if (data.intentSummary) {
-    ensureSpace(30);
-    doc.setFillColor(241, 245, 249);
-    doc.setDrawColor(203, 213, 225);
-    doc.roundedRect(margin, cursorY, contentWidth, 22, 2, 2, 'FD');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(180, 83, 9); // amber-700
-    doc.text('INTELLIGENT PREPROCESSED USER INQUIRY & INTENT CLASSIFICATION', margin + 4, cursorY + 6);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(51, 65, 85);
-    if (data.intentSummary.intentCategory) {
-      doc.text(`Classified Intent: ${data.intentSummary.intentCategory}`, margin + 4, cursorY + 12);
-    }
-    if (data.intentSummary.correctedNarrative) {
-      const narrativePreview = doc.splitTextToSize(
-        `Corrected Phrasing: "${data.intentSummary.correctedNarrative}"`,
-        contentWidth - 8
-      );
-      doc.text(narrativePreview[0] || '', margin + 4, cursorY + 17);
-    }
-    cursorY += 28;
-  }
-
-  // Section: Active Gochara (Transit Matrix) Summary Table
-  if (data.outboundPayload?.transitsForPeriod && data.outboundPayload.transitsForPeriod.length > 0) {
-    ensureSpace(45);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9.5);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`Active Gochara Transit Matrix for ${data.periodOfInterest}`, margin, cursorY);
-    cursorY += 4;
-
-    // Table Header
-    doc.setFillColor(226, 232, 240);
-    doc.rect(margin, cursorY, contentWidth, 6, 'F');
-    doc.setFontSize(7.5);
-    doc.setTextColor(51, 65, 85);
-    doc.text('Graha (Planet)', margin + 3, cursorY + 4.2);
-    doc.text('Transit Sign', margin + 35, cursorY + 4.2);
-    doc.text('Longitude', margin + 75, cursorY + 4.2);
-    doc.text('House (Lagna / Moon)', margin + 105, cursorY + 4.2);
-    doc.text('Classical Status / Impact', margin + 145, cursorY + 4.2);
-    cursorY += 6;
-
-    doc.setFont('helvetica', 'normal');
-    data.outboundPayload.transitsForPeriod.slice(0, 9).forEach((t, i) => {
-      ensureSpace(5.5);
-      if (i % 2 === 1) {
-        doc.setFillColor(248, 250, 252);
-        doc.rect(margin, cursorY, contentWidth, 5.5, 'F');
-      }
-      doc.setFontSize(7);
-      doc.setTextColor(30, 41, 59);
-      doc.text(t.planet, margin + 3, cursorY + 4);
-      doc.text(t.transitSign, margin + 35, cursorY + 4);
-      doc.text(`${t.degree} (${t.nakshatra} ${t.pada})`, margin + 75, cursorY + 4);
-      doc.text(`H${t.houseFromLagna} Lagna / H${t.houseFromMoon} Moon`, margin + 105, cursorY + 4);
-      doc.text(doc.splitTextToSize(t.classicalStatus, 32)[0] || '', margin + 145, cursorY + 4);
-      cursorY += 5.5;
-    });
-
-    cursorY += 4;
-  }
-
-  // Section: Primary Synthesized Report Output
-  ensureSpace(20);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.setTextColor(180, 83, 9); // amber-700
-  doc.text('SYNTHESIZED ASTROLOGICAL REPORT OUTPUT', margin, cursorY);
-  cursorY += 6;
-
-  const reportText =
+  const reportBodyHtml = markdownToHtml(
     data.primaryResult?.markdown ||
-    `# 1. BPHS D-1 & Divisional Strength Evaluation\nDhanusu Lagna (16°33'): Jupiter placed in Pisces (24°42') in 4th Kendra forming Hamsa Mahapurusha Yoga, conferring vehicles and fixed assets stability. D9 Navamsa confirms strength with Jupiter in Aquarius and Sun exalted in Aries. D10 Dasamsa places Jupiter in Leo 4th house and Saturn in Aries.\n\n# 2. Vimshottari Dasha Influence Analysis\nNative operates under active dasha during ${data.periodOfInterest}. Triggers decisive commercial and professional milestone.\n\n# 3. Gochara (Transit) Impact & Timing\nJupiter's transit in Cancer reinforces 8th/9th house expansion, Saturn in Pisces grounds 4th house matters.\n\n# 4. Synthesized Astrological Conclusion & Recommendations\nAuspicious window for vehicular acquisition and occupational role expansion. Remedies include Durga propitiation.`;
+      `# 1. BPHS D-1 & Divisional Strength Evaluation\n**Dhanusu Lagna (16°33'):** Jupiter placed in Pisces (24°42') in 4th Kendra forming Hamsa Mahapurusha Yoga, conferring vehicles and fixed assets stability. D9 Navamsa confirms strength with Jupiter in Aquarius and Sun exalted in Aries. D10 Dasamsa places Jupiter in Leo 4th house and Saturn in Aries.\n\n# 2. Vimshottari Dasha Influence Analysis\nNative operates under active dasha during ${data.periodOfInterest}. Triggers decisive commercial and professional milestone.\n\n# 3. Gochara (Transit) Impact & Timing\nJupiter's transit in Cancer reinforces 8th/9th house expansion, Saturn in Pisces grounds 4th house matters.\n\n# 4. Synthesized Astrological Conclusion & Recommendations\nAuspicious window for vehicular acquisition and occupational role expansion. Remedies include Durga propitiation.`
+  );
 
-  const lines = cleanMarkdownForPdf(reportText);
+  const secondaryBodyHtml =
+    data.secondaryResult && data.secondaryResult.markdown
+      ? `
+      <div style="margin-top: 16px; padding: 12px; border: 1px solid #bfdbfe; background: #f0f9ff; border-radius: 6px;">
+        <div style="font-weight: bold; font-size: 11.5px; color: #1e40af; margin-bottom: 6px; font-family: 'Courier New', monospace;">
+          SECONDARY CROSS-MODEL AUDIT (${data.secondaryResult.provider} • ${data.secondaryResult.model})
+        </div>
+        ${markdownToHtml(data.secondaryResult.markdown)}
+      </div>
+    `
+      : '';
 
-  lines.forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      cursorY += 2.5;
-      return;
-    }
-
-    // Check if header
-    const isSectionHeader = /^\d+\.\s+/.test(trimmed) || trimmed.startsWith('BPHS') || trimmed.startsWith('Synthesized');
-    if (isSectionHeader) {
-      ensureSpace(12);
-      cursorY += 2;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(15, 23, 42);
-      doc.text(trimmed, margin, cursorY);
-      cursorY += 5;
-    } else {
-      ensureSpace(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(51, 65, 85);
-      const splitLines = doc.splitTextToSize(trimmed, contentWidth);
-      splitLines.forEach((sl: string) => {
-        ensureSpace(4.5);
-        doc.text(sl, margin, cursorY);
-        cursorY += 4.2;
-      });
-    }
-  });
-
-  // Secondary LLM Comparative Audit (if available)
-  if (data.secondaryResult && data.secondaryResult.markdown) {
-    ensureSpace(25);
-    cursorY += 6;
-    doc.setFillColor(239, 246, 255); // blue-50
-    doc.setDrawColor(191, 219, 254);
-    doc.roundedRect(margin, cursorY, contentWidth, 8, 1, 1, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(29, 78, 216); // blue-700
-    doc.text(
-      `SECONDARY CROSS-MODEL AUDIT (${data.secondaryResult.provider} • ${data.secondaryResult.model})`,
-      margin + 4,
-      cursorY + 5.5
-    );
-    cursorY += 12;
-
-    const secondaryLines = cleanMarkdownForPdf(data.secondaryResult.markdown);
-    secondaryLines.forEach((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        cursorY += 2;
-        return;
+  const fullHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>BPHS Astrological Synthesis Report - ${data.periodOfInterest}</title>
+  <style>
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 15mm 15mm 15mm 15mm;
       }
-      ensureSpace(5);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(71, 85, 105);
-      const splitLines = doc.splitTextToSize(trimmed, contentWidth);
-      splitLines.forEach((sl: string) => {
-        ensureSpace(4);
-        doc.text(sl, margin, cursorY);
-        cursorY += 3.8;
-      });
+      body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      color: #0f172a;
+      background: #ffffff;
+    }
+    .print-banner {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .meta-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      font-size: 11px;
+    }
+    .meta-item strong {
+      color: #475569;
+      display: block;
+      font-size: 9.5px;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .meta-item span {
+      color: #0f172a;
+      font-weight: 600;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px 0;
+      font-size: 10.5px;
+    }
+    th {
+      background: #0f172a;
+      color: #f59e0b;
+      font-family: 'Courier New', monospace;
+      text-transform: uppercase;
+      font-size: 9.5px;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    .footer-bar {
+      margin-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom: 16px; padding: 10px 16px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+    <span style="color: #92400e; font-weight: 600;">
+      Print Dialog will open automatically. Choose "Save as PDF" to save this report.
+    </span>
+    <button onclick="window.print()" style="background: #b45309; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">
+      Print / Save as PDF
+    </button>
+  </div>
+
+  <div class="print-banner">
+    <div>
+      <h1 style="margin: 0; font-size: 17px; font-family: 'Courier New', monospace; font-weight: bold; color: #fbbf24; letter-spacing: 0.5px;">
+        MAHARISHI PARASHARA BPHS SYNTHESIS ENGINE
+      </h1>
+      <p style="margin: 4px 0 0 0; font-size: 11px; color: #cbd5e1;">
+        Canonical Horoscopic Evaluation & Multi-LLM Gochara Synthesis Report
+      </p>
+    </div>
+    <div style="text-align: right; font-size: 10px; color: #94a3b8; font-family: monospace;">
+      <div>Generated: ${new Date().toLocaleString()}</div>
+      <div>Specification: Document 1.1</div>
+    </div>
+  </div>
+
+  <div class="meta-box">
+    <div class="meta-item">
+      <strong>Period of Interest</strong>
+      <span>${data.periodOfInterest} (${data.anchorDate})</span>
+    </div>
+    <div class="meta-item">
+      <strong>Active Vimshottari Dasha</strong>
+      <span>${data.dashaInfo}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Primary Model / Latency</strong>
+      <span>${primaryModelName} (${latencySec}s)</span>
+    </div>
+    <div class="meta-item">
+      <strong>Lagna & Navamsha</strong>
+      <span>Sagittarius 16°33' • D9 Aquarius</span>
+    </div>
+    <div class="meta-item">
+      <strong>Janma Rasi (Moon Sign)</strong>
+      <span>Scorpio (Vrishchika 06°08')</span>
+    </div>
+    <div class="meta-item">
+      <strong>Native Identification</strong>
+      <span>${data.nativeId || 'CANONICAL-NATIVE-BPHS-01'}</span>
+    </div>
+  </div>
+
+  ${
+    data.intentSummary
+      ? `
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 11px;">
+      <div style="font-weight: bold; color: #b45309; text-transform: uppercase; font-size: 9.5px; margin-bottom: 4px; font-family: 'Courier New', monospace;">
+        PREPROCESSED USER INQUIRY & INTENT CLASSIFICATION
+      </div>
+      <div style="color: #78350f;">
+        <strong>Intent Category:</strong> ${data.intentSummary.intentCategory || 'Astrological Evaluation'}
+        ${
+          data.intentSummary.correctedNarrative
+            ? `<div style="margin-top: 3px; font-style: italic;">"${data.intentSummary.correctedNarrative}"</div>`
+            : ''
+        }
+      </div>
+    </div>
+  `
+      : ''
+  }
+
+  ${
+    transitRowsHtml
+      ? `
+    <div>
+      <div style="font-weight: bold; font-size: 12px; color: #0f172a; margin-bottom: 4px; font-family: 'Courier New', monospace;">
+        ACTIVE GOCHARA TRANSIT MATRIX (${data.periodOfInterest})
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Graha</th>
+            <th>Transit Sign</th>
+            <th>Longitude</th>
+            <th>House (Lagna)</th>
+            <th>House (Moon)</th>
+            <th>Classical Impact Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${transitRowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `
+      : ''
+  }
+
+  <div style="margin-top: 14px;">
+    ${reportBodyHtml}
+  </div>
+
+  ${secondaryBodyHtml}
+
+  <div class="footer-bar">
+    <span>Maharishi Parashara BPHS Astrological Reasoning Engine — Document 1.1 Specification</span>
+    <span>Confidential Horoscopic Assessment</span>
+  </div>
+
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        window.print();
+      }, 300);
     });
-  }
+  </script>
+</body>
+</html>
+  `;
 
-  // Footer on all pages
-  const totalPages = doc.internal.pages.length - 1;
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.3);
-    doc.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14);
-    doc.setFontSize(7.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text('Maharishi Parashara BPHS Astrological Reasoning Engine — Confidential Horoscopic Document', margin, pageHeight - 9);
-    doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 20, pageHeight - 9);
+  // Open the print document in a new window/tab for instant high-fidelity print/PDF saving
+  const printWindow = window.open('', '_blank', 'width=900,height=800');
+  if (printWindow) {
+    printWindow.document.open();
+    printWindow.document.write(fullHtml);
+    printWindow.document.close();
+  } else {
+    // If popups blocked, download as standalone HTML report
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const sanitizedDate = data.anchorDate.replace(/[^0-9-]/g, '');
+    link.download = `BPHS_Astrological_Report_${sanitizedDate}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
-
-  // Save PDF
-  const sanitizedDate = data.anchorDate.replace(/[^0-9-]/g, '');
-  doc.save(`BPHS_Astrological_Report_${sanitizedDate}.pdf`);
 }
 
 /**
