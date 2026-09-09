@@ -23,6 +23,73 @@ export interface ReportExportData {
 }
 
 /**
+ * Strips ritualistic/astrological remedies (gemstones, mantras, pujas, deity propitiations, animal feedings)
+ * and strictly reframes remedial measures into practical, real-world strategic, financial, and operational realities.
+ */
+export function filterRemediesToPracticalRealities(markdown: string): string {
+  if (!markdown) return markdown;
+
+  let cleaned = markdown;
+
+  // 1. Direct replacement of classical mock/fallback remedy statements
+  cleaned = cleaned.replace(
+    /Recommended classical remedies include propitiation of Goddess Durga on Tuesdays for Mars Neechabhanga and feeding birds on Saturdays for Saturn\.?/gi,
+    'Practical Realities & Risk Mitigation: Ensure thorough contractual and warranty verification on all acquisitions, maintain liquid emergency capital buffers, and pace career transition milestones based on verified organizational deliverables rather than speculative forecasts.'
+  );
+
+  cleaned = cleaned.replace(
+    /Remedies include Durga propitiation\.?/gi,
+    'Practical Realities & Action Measures: Focus on capital reserve preservation, contract review, and paced occupational transitions.'
+  );
+
+  cleaned = cleaned.replace(
+    /Propitiate Durga on Tuesdays for Mars Neechabhanga and maintain Saturn's discipline with regular charitable offerings\.?/gi,
+    'Strategic Realities & Operational Pacing: Focus strictly on real-world execution: verify contractual terms, lock in advantageous financing rates, and maintain disciplined project milestones.'
+  );
+
+  // 2. Replace generic astrological remedy lead-ins
+  cleaned = cleaned.replace(
+    /(?:Recommended\s+)?(?:Classical\s+)?(?:Vedic\s+)?(?:Astrological\s+)?Remedies\s*(?::|include)\s*([^\n\.]*[\.\n]?)/gi,
+    'Strategic Realities & Practical Risk Mitigation: Focus on documented asset verification, disciplined contractual terms, and maintaining contingency capital buffers.\n'
+  );
+
+  // 3. Remove/replace gemstone wearing suggestions
+  cleaned = cleaned.replace(
+    /(?:wear(?:ing)?\s+(?:a\s+)?(?:yellow\s+sapphire|blue\s+sapphire|ruby|emerald|diamond|pearl|red\s+coral|hessonite|cat['’]s\s+eye|gemstone)[^\n\.]*[\.\n]?)/gi,
+    'Focus on tangible operational safeguards and financial due diligence.'
+  );
+
+  // 4. Remove/replace mantra chanting and rituals
+  cleaned = cleaned.replace(
+    /(?:chant(?:ing)?|recit(?:e|ing))\s+(?:the\s+)?(?:mantra|stotram|kavach|japa)[^\n\.]*[\.\n]?/gi,
+    'Maintain daily mental focus, clear communication channels, and disciplined scheduling.'
+  );
+
+  cleaned = cleaned.replace(
+    /(?:perform(?:ing)?|conduct(?:ing)?)\s+(?:puja|pooja|homa|havan|yajna|temple\s+visit)[^\n\.]*[\.\n]?/gi,
+    'Conduct systematic risk audits and operational stress-testing.'
+  );
+
+  cleaned = cleaned.replace(
+    /(?:propitiat(?:e|ion)\s+(?:of\s+)?(?:goddess|lord|graha|planet|deity|durga|shani|mars|rahu|ketu|jupiter)[^\n\.]*[\.\n]?)/gi,
+    'Adopt proactive risk mitigation measures and align strategic decisions with verifiable timelines.'
+  );
+
+  cleaned = cleaned.replace(
+    /(?:feed(?:ing)?\s+(?:birds|crows|dogs|cows|fishes|ants)[^\n\.]*[\.\n]?)/gi,
+    'Cultivate sustainable professional habits, team equity, and organizational transparency.'
+  );
+
+  // 4. Update section header to emphasize practical realities
+  cleaned = cleaned.replace(
+    /# 4\. Synthesized Astrological Conclusion & Recommendations/gi,
+    '# 4. Synthesized Astrological Conclusion & Practical Realities'
+  );
+
+  return cleaned;
+}
+
+/**
  * Clean markdown text to readable HTML paragraphs/headers
  */
 function markdownToHtml(md: string): string {
@@ -104,7 +171,7 @@ function markdownToHtml(md: string): string {
 
 /**
  * Generates and triggers high-fidelity print-to-PDF with crisp formatting,
- * metadata table, transit matrix, and synthesis report.
+ * owner product branding with Rooster icon, metadata table, transit matrix, and synthesis report.
  */
 export function exportReportToPdf(data: ReportExportData): void {
   const primaryModelName = data.primaryResult?.model || 'Gemini 1.5 Pro';
@@ -128,19 +195,25 @@ export function exportReportToPdf(data: ReportExportData): void {
     )
     .join('');
 
-  const reportBodyHtml = markdownToHtml(
+  // Clean raw markdown to ensure remedies are stripped and converted to practical realities
+  const rawPrimaryMd =
     data.primaryResult?.markdown ||
-      `# 1. BPHS D-1 & Divisional Strength Evaluation\n**Dhanusu Lagna (16°33'):** Jupiter placed in Pisces (24°42') in 4th Kendra forming Hamsa Mahapurusha Yoga, conferring vehicles and fixed assets stability. D9 Navamsa confirms strength with Jupiter in Aquarius and Sun exalted in Aries. D10 Dasamsa places Jupiter in Leo 4th house and Saturn in Aries.\n\n# 2. Vimshottari Dasha Influence Analysis\nNative operates under active dasha during ${data.periodOfInterest}. Triggers decisive commercial and professional milestone.\n\n# 3. Gochara (Transit) Impact & Timing\nJupiter's transit in Cancer reinforces 8th/9th house expansion, Saturn in Pisces grounds 4th house matters.\n\n# 4. Synthesized Astrological Conclusion & Recommendations\nAuspicious window for vehicular acquisition and occupational role expansion. Remedies include Durga propitiation.`
-  );
+    `# 1. BPHS D-1 & Divisional Strength Evaluation\n**Dhanusu Lagna (16°33'):** Jupiter placed in Pisces (24°42') in 4th Kendra forming Hamsa Mahapurusha Yoga, conferring vehicles and fixed assets stability. D9 Navamsa confirms strength with Jupiter in Aquarius and Sun exalted in Aries. D10 Dasamsa places Jupiter in Leo 4th house and Saturn in Aries.\n\n# 2. Vimshottari Dasha Influence Analysis\nNative operates under active dasha during ${data.periodOfInterest}. Triggers decisive commercial and professional milestone.\n\n# 3. Gochara (Transit) Impact & Timing\nJupiter's transit in Cancer reinforces 8th/9th house expansion, Saturn in Pisces grounds 4th house matters.\n\n# 4. Synthesized Astrological Conclusion & Practical Realities\nAuspicious window for vehicular acquisition and occupational role expansion. Practical Realities & Risk Mitigation: Ensure thorough contractual and warranty verification on all acquisitions, maintain liquid emergency capital buffers, and pace career transition milestones based on verified organizational deliverables rather than speculative forecasts.`;
+
+  const cleanedPrimaryMd = filterRemediesToPracticalRealities(rawPrimaryMd);
+  const reportBodyHtml = markdownToHtml(cleanedPrimaryMd);
+
+  const rawSecondaryMd = data.secondaryResult?.markdown || '';
+  const cleanedSecondaryMd = filterRemediesToPracticalRealities(rawSecondaryMd);
 
   const secondaryBodyHtml =
-    data.secondaryResult && data.secondaryResult.markdown
+    cleanedSecondaryMd
       ? `
       <div style="margin-top: 16px; padding: 12px; border: 1px solid #bfdbfe; background: #f0f9ff; border-radius: 6px;">
         <div style="font-weight: bold; font-size: 11.5px; color: #1e40af; margin-bottom: 6px; font-family: 'Courier New', monospace;">
-          SECONDARY CROSS-MODEL AUDIT (${data.secondaryResult.provider} • ${data.secondaryResult.model})
+          SECONDARY CROSS-MODEL AUDIT (${data.secondaryResult?.provider || 'Secondary LLM'} • ${data.secondaryResult?.model || 'Auditor'})
         </div>
-        ${markdownToHtml(data.secondaryResult.markdown)}
+        ${markdownToHtml(cleanedSecondaryMd)}
       </div>
     `
       : '';
@@ -150,19 +223,28 @@ export function exportReportToPdf(data: ReportExportData): void {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>BPHS Astrological Synthesis Report - ${data.periodOfInterest}</title>
+  <title>Rooster Astro Analytical Tool - BPHS Synthesis Report - ${data.periodOfInterest}</title>
   <style>
     @media print {
       @page {
         size: A4 portrait;
-        margin: 15mm 15mm 15mm 15mm;
+        margin: 12mm 14mm 12mm 14mm;
       }
       body {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        padding: 0 !important;
       }
       .no-print {
         display: none !important;
+      }
+      .product-owner-header {
+        border: 1.5px solid #d97706 !important;
+        background: #fffdfa !important;
+      }
+      .print-banner {
+        background: #0f172a !important;
+        color: #f8fafc !important;
       }
     }
     body {
@@ -171,6 +253,18 @@ export function exportReportToPdf(data: ReportExportData): void {
       padding: 24px;
       color: #0f172a;
       background: #ffffff;
+    }
+    /* Top Owner Branding Banner with Rooster Icon */
+    .product-owner-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      margin-bottom: 12px;
+      border: 1.5px solid #fed7aa;
+      background: #fffdfa;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .print-banner {
       background: #0f172a;
@@ -238,6 +332,58 @@ export function exportReportToPdf(data: ReportExportData): void {
     <button onclick="window.print()" style="background: #b45309; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">
       Print / Save as PDF
     </button>
+  </div>
+
+  <!-- Product Naming, Rooster Icon & Owner Header (Printed at top of PDF) -->
+  <div class="product-owner-header">
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <!-- Rooster Icon SVG (Golden Seval Kodi Emblem) -->
+      <div style="width: 44px; height: 44px; flex-shrink: 0; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1.5px solid #d97706; border-radius: 8px; padding: 3px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
+        <svg viewBox="0 0 100 100" width="38" height="38" style="display: block;">
+          <defs>
+            <linearGradient id="pdfGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#fef08a" />
+              <stop offset="50%" stopColor="#f59e0b" />
+              <stop offset="100%" stopColor="#b45309" />
+            </linearGradient>
+            <linearGradient id="pdfCrimson" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#991b1b" />
+              <stop offset="70%" stopColor="#b91c1c" />
+              <stop offset="100%" stopColor="#7f1d1d" />
+            </linearGradient>
+          </defs>
+          <!-- Vel / Spear Staff -->
+          <line x1="28" y1="12" x2="28" y2="92" stroke="#d97706" stroke-width="4" stroke-linecap="round" />
+          <!-- Spear Tip / Vel Leaf -->
+          <path d="M 28 6 Q 24 16 28 20 Q 32 16 28 6 Z" fill="url(#pdfGoldGrad)" stroke="#fef08a" stroke-width="1" />
+          <!-- Flying Banner Flag -->
+          <path d="M 28 20 C 50 16, 68 28, 88 22 C 78 38, 88 54, 86 60 C 65 52, 45 64, 28 58 Z" fill="url(#pdfCrimson)" stroke="#f59e0b" stroke-width="1.5" />
+          <!-- Golden Rooster Silhouette on Flag -->
+          <g fill="url(#pdfGoldGrad)" transform="translate(42, 28) scale(0.38)">
+            <path d="M 30 50 C 20 40 10 25 2 10 C 15 20 25 28 35 34 C 28 15 22 2 12 -8 C 26 5 36 18 42 30 C 50 15 54 -2 46 -15 C 60 5 62 20 60 32 C 68 28 76 22 84 14 C 80 26 72 36 62 42 C 72 46 82 52 88 62 C 78 62 68 58 58 56 C 54 68 44 76 30 76 C 18 76 22 62 30 50 Z" />
+            <circle cx="68" cy="18" r="10" />
+            <path d="M 66 8 Q 72 0 78 8 Q 84 2 84 10" stroke="#fef08a" stroke-width="3" fill="none" />
+            <polygon points="76,18 88,22 76,26" fill="#fef08a" />
+          </g>
+          <!-- Solar Radiance / Star Emblem -->
+          <circle cx="80" cy="24" r="2.5" fill="#fef08a" />
+          <path d="M 80 18 L 80 30 M 74 24 L 86 24" stroke="#fef08a" stroke-width="1" stroke-linecap="round" />
+        </svg>
+      </div>
+      <div>
+        <div style="font-size: 15px; font-weight: 800; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; letter-spacing: 0.3px; display: flex; align-items: center; gap: 8px;">
+          <span>ROOSTER ASTRO ANALYTICAL TOOL</span>
+          <span style="font-size: 8.5px; font-weight: 700; color: #b45309; background: #fef3c7; border: 1px solid #fde68a; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; font-family: monospace;">Owner Edition</span>
+        </div>
+        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
+          Product & Research Suite Owned by <strong>Rooster Astro Analytical Tool</strong> • High-Precision Canonical Astrological Computing
+        </div>
+      </div>
+    </div>
+    <div style="text-align: right; font-size: 9px; color: #64748b; font-family: monospace;">
+      <div style="font-weight: 700; color: #0f172a;">AUTHENTICATED OWNER REPORT</div>
+      <div>Zero-Ingress Security • Practical Realities</div>
+    </div>
   </div>
 
   <div class="print-banner">
@@ -336,8 +482,8 @@ export function exportReportToPdf(data: ReportExportData): void {
   ${secondaryBodyHtml}
 
   <div class="footer-bar">
-    <span>Maharishi Parashara BPHS Astrological Reasoning Engine — Document 1.1 Specification</span>
-    <span>Confidential Horoscopic Assessment</span>
+    <span>Rooster Astro Analytical Tool — Maharishi Parashara BPHS Astrological Reasoning Engine</span>
+    <span>Confidential Horoscopic Assessment • Practical Realities Only</span>
   </div>
 
   <script>
@@ -378,7 +524,9 @@ export function exportReportToPdf(data: ReportExportData): void {
 export function exportReportToMarkdown(data: ReportExportData): void {
   const lines: string[] = [];
 
-  lines.push(`# Maharishi Parashara BPHS Astrological Synthesis Report`);
+  lines.push(`# Rooster Astro Analytical Tool`);
+  lines.push(`*Product & Research Suite Owned by Rooster Astro Analytical Tool*`);
+  lines.push(`*Canonical BPHS Astrological Synthesis Report*  `);
   lines.push(`**Generated:** ${new Date().toLocaleString()}  `);
   lines.push(`**Document Version:** 1.1 Specification  `);
   lines.push(`**Target Window:** ${data.periodOfInterest} (${data.anchorDate})  `);
@@ -418,29 +566,32 @@ export function exportReportToMarkdown(data: ReportExportData): void {
     lines.push('');
   }
 
-  // Primary Synthesized Output
+  // Primary Synthesized Output (Filtered for Practical Realities)
+  const primaryRaw =
+    data.primaryResult?.markdown ||
+    'No primary report markdown available. Run synthesis dispatch in the workbench.';
+  const cleanedPrimary = filterRemediesToPracticalRealities(primaryRaw);
+
   lines.push(`## Primary Astrological Synthesis (${data.primaryResult?.model || 'Gemini Flash Latest'})`);
   lines.push(`*Source: ${data.primaryResult?.provider || 'Google Gemini'} | Latency: ${((data.primaryResult?.latencyMs || 850) / 1000).toFixed(2)}s*`);
   lines.push('');
-  lines.push(
-    data.primaryResult?.markdown ||
-      'No primary report markdown available. Run synthesis dispatch in the workbench.'
-  );
+  lines.push(cleanedPrimary);
   lines.push('');
 
-  // Secondary LLM Output (if available)
+  // Secondary LLM Output (if available, Filtered for Practical Realities)
   if (data.secondaryResult && data.secondaryResult.markdown) {
+    const cleanedSecondary = filterRemediesToPracticalRealities(data.secondaryResult.markdown);
     lines.push('---');
     lines.push('');
     lines.push(`## Secondary Cross-Model Audit (${data.secondaryResult.model})`);
     lines.push(`*Source: ${data.secondaryResult.provider} | Latency: ${((data.secondaryResult.latencyMs || 1100) / 1000).toFixed(2)}s*`);
     lines.push('');
-    lines.push(data.secondaryResult.markdown);
+    lines.push(cleanedSecondary);
     lines.push('');
   }
 
   lines.push('---');
-  lines.push('*Report compiled by BPHS Autonomous Astrological Engine v1.1.*');
+  lines.push('*Report compiled by Rooster Astro Analytical Tool — BPHS Autonomous Astrological Engine v1.1. No mystical remedies applied; practical realities strictly enforced.*');
 
   const fullContent = lines.join('\n');
   const blob = new Blob([fullContent], { type: 'text/markdown;charset=utf-8;' });
@@ -448,9 +599,10 @@ export function exportReportToMarkdown(data: ReportExportData): void {
   const link = document.createElement('a');
   link.href = url;
   const sanitizedDate = data.anchorDate.replace(/[^0-9-]/g, '');
-  link.download = `BPHS_Astrological_Report_${sanitizedDate}.md`;
+  link.download = `RoosterAstro_Report_${sanitizedDate}.md`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+

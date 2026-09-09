@@ -18,6 +18,8 @@ import {
   FileCheck,
   ArrowRight,
   FilterX,
+  Cpu,
+  Compass,
 } from 'lucide-react';
 import {
   ReasoningQuestion,
@@ -28,17 +30,21 @@ import {
   flushModelFromMemory,
   getResourceMonitorState,
   notifyModelLoaded,
+  MODEL_FOOTPRINTS,
+  saveResourceMonitorSettings,
 } from '../utils/resourceMonitor';
 
 interface ReasoningServantModalProps {
   isOpen: boolean;
   onClose: () => void;
+  rawNarrative?: string;
   evaluation: ServantEvaluationResult;
   onCompleteIntake: (mergedData: {
     mergedNarrative: string;
     finalTimeline: string;
     validAnswers: ReasoningQuestion[];
     scrubbedNaCount: number;
+    updatedStorySynopsis?: string;
     autoDispatch: boolean;
   }) => void;
 }
@@ -51,15 +57,30 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 }) => {
   const [questions, setQuestions] = useState<ReasoningQuestion[]>(evaluation.questions);
   const [timelineInput, setTimelineInput] = useState<string>(evaluation.normalizedTimeline);
+  const [monitorState, setMonitorState] = useState(getResourceMonitorState());
 
-  // When modal is active, the 32B model is resident in memory for intake reasoning
+  const supportedModels = [
+    { id: 'deepseek_32b', label: 'DeepSeek 32B' },
+    { id: 'qwen_14b', label: 'Qwen 14B' },
+    { id: 'llama_8b', label: 'Llama 8B' },
+    { id: 'qwen_32b', label: 'Qwen 32B' },
+  ];
+
+  // When modal is active, the model is resident in memory for intake reasoning
   React.useEffect(() => {
     if (isOpen) {
-      notifyModelLoaded();
+      notifyModelLoaded(monitorState.activeModelId);
+      setMonitorState(getResourceMonitorState());
     }
-  }, [isOpen]);
+  }, [isOpen, monitorState.activeModelId]);
 
   if (!isOpen) return null;
+
+  const handleModelChange = (modelId: string) => {
+    saveResourceMonitorSettings({ activeModelId: modelId });
+    notifyModelLoaded(modelId);
+    setMonitorState(getResourceMonitorState());
+  };
 
   const handleTextChange = (id: string, value: string) => {
     setQuestions((prev) =>
@@ -86,10 +107,10 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 
     const mergeResult = mergeServantState(evaluation, updatedQuestions);
 
-    // Auto-offload 32B model from memory immediately upon prompt validation (keep_alive: 0)
+    // Auto-offload model from memory immediately upon prompt validation (keep_alive: 0)
     const monitorSettings = getResourceMonitorState();
     if (monitorSettings.autoFlushOnPromptValidation) {
-      flushModelFromMemory({ reason: 'prompt_validated' });
+      flushModelFromMemory({ reason: 'prompt_validated', modelId: monitorState.activeModelId });
     }
 
     onCompleteIntake({
@@ -97,6 +118,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
       finalTimeline: mergeResult.finalTimeline || timelineInput,
       validAnswers: mergeResult.validAnswers,
       scrubbedNaCount: mergeResult.scrubbedCount,
+      updatedStorySynopsis: mergeResult.updatedStorySynopsis,
       autoDispatch,
     });
     onClose();
@@ -124,7 +146,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono mt-0.5">
-                Multi-Box Intake System ("Dabbas") & Chronological Timeline Validation
+                Precision Narrative & Domain Formulation • Zero Filler Clarifications
               </p>
             </div>
           </div>
@@ -139,40 +161,85 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
           </button>
         </div>
 
-        {/* Narrative & Density Summary Banner */}
-        <div className="px-4 py-3 bg-slate-950/90 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5 text-xs font-mono">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="text-slate-300">
-              Scrubbed & Compressed: <strong className="text-emerald-300">{evaluation.metrics.tokenCompressionRatio}</strong>
-            </span>
-            <span className="text-slate-500">|</span>
-            <span className="text-amber-300">
-              {evaluation.metrics.gapsIdentifiedCount} context gaps identified
-            </span>
+        {/* Narrative & Model Architecture Switcher Banner */}
+        <div className="px-4 py-2.5 bg-slate-950/95 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <div className="flex items-center gap-2.5">
+            <Cpu className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-slate-400">Servant Engine:</span>
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-lg p-0.5">
+              {supportedModels.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => handleModelChange(m.id)}
+                  className={`px-2 py-1 rounded text-[10.5px] font-mono cursor-pointer transition-all ${
+                    monitorState.activeModelId === m.id
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                  title={`${m.label}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-slate-400">Active Boxes: <strong className="text-amber-300">{activeQuestionsCount}</strong></span>
-            {scrubbedNaCount > 0 && (
-              <span className="text-rose-400 bg-rose-950/50 px-2 py-0.5 rounded border border-rose-900/50 flex items-center gap-1">
-                <FilterX className="w-3 h-3" />
-                {scrubbedNaCount} marked N/A (purged)
-              </span>
-            )}
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <span>Footprint: <strong className="text-amber-300">{(MODEL_FOOTPRINTS[monitorState.activeModelId] || MODEL_FOOTPRINTS['deepseek_32b']).totalActiveGb} GB</strong></span>
+            <span className="text-slate-600">|</span>
+            <span className="text-emerald-400">Auto-Flush: ON</span>
           </div>
         </div>
 
         {/* Modal Scrollable Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
-          {/* Compressed Narrative Display */}
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-              <span className="font-semibold text-amber-400">Density-Tuned Core Narrative:</span>
-              <span className="text-emerald-400">Conversational filler purged</span>
+          {/* Domain & Significator Card */}
+          {evaluation.detectedDomain && (
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-slate-950 to-slate-900 border border-amber-700/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-start gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 shrink-0 mt-0.5">
+                  <Compass className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-200">
+                      {evaluation.detectedDomain.title}
+                    </span>
+                    <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
+                      Bhava {evaluation.detectedDomain.bhava}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5 font-sans">
+                    Significators: <strong className="text-amber-300 font-mono">{evaluation.detectedDomain.significator}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right sm:max-w-xs">
+                <span className="text-[10.5px] text-slate-400 italic block">
+                  {evaluation.detectedDomain.suggestedFocus}
+                </span>
+              </div>
             </div>
-            <p className="text-xs text-slate-200 italic font-sans leading-relaxed">
-              "{evaluation.compressedNarrative}"
+          )}
+
+          {/* Precision Story Formulation (Context Window Optimized) */}
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col gap-2">
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5" />
+                Precision High-Density Story Formulation (Master LLM Context)
+              </span>
+              <span className="text-amber-300 text-[10px]">
+                {evaluation.metrics.tokenCompressionRatio} • 0% repetitive 'native' jargon
+              </span>
+            </div>
+            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed">
+              {evaluation.storySynopsis}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Cleaned narrative: <span className="italic text-slate-300">"{evaluation.compressedNarrative}"</span>
             </p>
           </div>
 
@@ -229,36 +296,53 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
           {/* TARGETED QUESTION BOXES ("DABBAS") */}
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-300 px-0.5">
-              <span>Targeted Context Clarification Boxes ("Dabbas"):</span>
+              <span>Domain-Specific Clarification Boxes ("Dabbas"):</span>
               <span className="text-[10px] text-slate-400 font-normal">
-                Answer where applicable or mark N/A to permanently scrub
+                {questions.length === 0
+                  ? 'All context verified! No additional questions needed.'
+                  : 'Answer where applicable or mark N/A to permanently scrub'}
               </span>
             </div>
 
-            {questions.map((q, idx) => {
-              const isNa = q.isNotApplicable;
+            {questions.length === 0 ? (
+              <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-center flex flex-col items-center gap-1.5">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                <span className="text-xs font-bold text-emerald-300">Narrative Is Self-Contained & Complete</span>
+                <p className="text-[11px] text-slate-400 max-w-md">
+                  Your query already provides sufficient context and chronological clarity. No unnecessary filler questions required.
+                </p>
+              </div>
+            ) : (
+              questions.map((q, idx) => {
+                const isNa = q.isNotApplicable;
 
-              return (
-                <div
-                  key={q.id}
-                  className={`p-3.5 rounded-xl border transition-all ${
-                    isNa
-                      ? 'bg-slate-950/40 border-slate-800 opacity-60'
-                      : 'bg-slate-950/90 border-amber-900/50 hover:border-amber-700/60 shadow-md'
-                  }`}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800/80">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10.5px] font-bold flex items-center justify-center border border-amber-500/30">
-                        {idx + 1}
-                      </span>
-                      <h4 className="text-xs font-bold text-amber-200">
-                        {q.title}
-                      </h4>
-                      <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                        {q.pillar === 'timeline' ? 'Pillar 1' : 'Pillar 2'}
-                      </span>
-                    </div>
+                return (
+                  <div
+                    key={q.id}
+                    className={`p-3.5 rounded-xl border transition-all ${
+                      isNa
+                        ? 'bg-slate-950/40 border-slate-800 opacity-60'
+                        : 'bg-slate-950/90 border-amber-900/50 hover:border-amber-700/60 shadow-md'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800/80">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10.5px] font-bold flex items-center justify-center border border-amber-500/30">
+                          {idx + 1}
+                        </span>
+                        <h4 className="text-xs font-bold text-amber-200">
+                          {q.title}
+                        </h4>
+                        {q.domainLabel ? (
+                          <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-amber-300/90 border border-slate-700">
+                            {q.domainLabel}
+                          </span>
+                        ) : (
+                          <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                            {q.pillar === 'timeline' ? 'Pillar 1' : 'Pillar 2'}
+                          </span>
+                        )}
+                      </div>
 
                     {/* N/A Toggle Button per SRS */}
                     <button
@@ -332,7 +416,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
                   )}
                 </div>
               );
-            })}
+            }))}
           </div>
         </div>
 

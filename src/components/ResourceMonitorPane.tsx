@@ -56,7 +56,10 @@ export const ResourceMonitorPane: React.FC<ResourceMonitorPaneProps> = ({
 
   if (!isOpen) return null;
 
-  const currentSpec = MODEL_FOOTPRINTS[state.activeModelId] || MODEL_FOOTPRINTS['32b_q4'];
+  const currentSpec =
+    MODEL_FOOTPRINTS[state.activeModelId] ||
+    MODEL_FOOTPRINTS['deepseek_32b'] ||
+    Object.values(MODEL_FOOTPRINTS)[0];
 
   const handleManualFlush = async () => {
     setIsFlushing(true);

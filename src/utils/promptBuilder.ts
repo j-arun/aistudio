@@ -509,6 +509,7 @@ export interface ServantContextOverride {
   finalTimeline?: string;
   clarificationAnswers?: ReasoningQuestion[];
   scrubbedNaCount?: number;
+  updatedStorySynopsis?: string;
 }
 
 export interface OutboundPromptPayload {
@@ -650,7 +651,10 @@ ${allTransitsXml}
     # 1. BPHS D-1 & Divisional Strength Evaluation
     # 2. Vimshottari Dasha Influence Analysis
     # 3. Gochara (Transit) Impact & Timing
-    # 4. Synthesized Astrological Conclusion & Recommendations
+    # 4. Synthesized Astrological Conclusion & Practical Realities
+    CRITICAL MANDATE FOR RECOMMENDATIONS:
+    Under Section 4, strictly focus on real-world, actionable realities (e.g. strategic risk mitigation, financial due diligence, contract verification, capital preservation, and operational milestone pacing).
+    Do NOT prescribe or mention any astrological remedies, gemstones, rituals, mantras, pujas, or superstitious propitiations.
   </output_formatting_instructions>
 </bphs_analysis_request>`;
 
@@ -693,6 +697,9 @@ ${allTransitsXml}
     <intent_category>${intelligentProcessing.intentCategory}</intent_category>
     <temporal_horizon standard_format="YYYY-MM" verified_timeline="${validatedTimeline}">${validatedTimeline}</temporal_horizon>
     <target_divisional_charts>${intelligentProcessing.diffSummary.targetDivisionalCharts.join(', ')}</target_divisional_charts>
+    <precision_story_synopsis>
+      ${servantOverride?.updatedStorySynopsis || servantEvaluation.storySynopsis}
+    </precision_story_synopsis>
     <validated_user_narrative>
       ${validatedNarrativeText}
     </validated_user_narrative>${clarificationsXml}
@@ -708,7 +715,10 @@ ${intelligentProcessing.contextualDirectives.map((d) => `      <directive>${d}</
     # 1. BPHS D-1 & Divisional Strength Evaluation
     # 2. Vimshottari Dasha Influence Analysis
     # 3. Gochara (Transit) Impact & Timing
-    # 4. Synthesized Astrological Conclusion & Recommendations
+    # 4. Synthesized Astrological Conclusion & Practical Realities
+    CRITICAL MANDATE FOR RECOMMENDATIONS:
+    Under Section 4, strictly focus on real-world, actionable realities (e.g. strategic risk mitigation, financial due diligence, contract verification, capital preservation, and operational milestone pacing).
+    Do NOT prescribe or mention any astrological remedies, gemstones, rituals, mantras, pujas, or superstitious propitiations.
   </output_formatting_instructions>
 </bphs_analysis_request>`;
 

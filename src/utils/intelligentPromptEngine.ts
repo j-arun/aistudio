@@ -200,12 +200,12 @@ export function analyzeQueryIntent(text: string): {
     foci.push({
       house: 6,
       houseName: 'Roga & Satru Bhava',
-      domain: 'Physical Well-Being, Recuperation & Planetary Propitiations',
+      domain: 'Physical Well-Being, Recuperation & Practical Risk Mitigation',
       signifyingGraha: 'Mars (Kuja) & Saturn (Sani)',
       recommendedDivisionalCharts: ['D1', 'D8'],
     });
     directives.push(
-      'Evaluate 6th lord Venus in 1st house and 8th house Saturn retrograde in Cancer to recommend classical Vedic remedies.'
+      'Evaluate 6th lord Venus in 1st house and 8th house Saturn retrograde in Cancer to recommend practical health habits and strategic risk mitigation (strictly excluding superstitious rituals or remedies).'
     );
   }
 
@@ -241,7 +241,7 @@ export function analyzeQueryIntent(text: string): {
   } else if (foci.some((f) => f.house === 11 || f.house === 2)) {
     intentCategory = 'Financial Liquidity & Wealth Timing';
   } else if (foci.some((f) => f.house === 6 || f.house === 8)) {
-    intentCategory = 'Health Diagnostics & Classical Remedial Guidance';
+    intentCategory = 'Health Diagnostics & Practical Realities Guidance';
   }
 
   // Extract Temporal Scope

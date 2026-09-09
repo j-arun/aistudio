@@ -161,7 +161,7 @@ ${form3Xml}
     # 1. BPHS D-1 & Divisional Strength Evaluation
     # 2. Vimshottari Dasha Influence Analysis
     # 3. Gochara (Transit) Impact & Timing
-    # 4. Synthesized Astrological Conclusion & Recommendations
+    # 4. Synthesized Astrological Conclusion & Practical Realities (Strict Real-World Actions Only - No Astrological Ritual Remedies)
   </Output_Schema_Instructions>
 </BPHS_Master_Package>`;
 

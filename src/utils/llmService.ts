@@ -399,9 +399,9 @@ ${transits
   )
   .join('\n')}
 
-# 4. Synthesized Astrological Conclusion & Recommendations
+# 4. Synthesized Astrological Conclusion & Practical Realities
 
-The ${payload.periodOfInterest} window is astrologically optimal for 4th house vehicular acquisition and occupational role expansion. Planetary transits and Ashtakavarga bindu distribution strongly support forward momentum. Recommended classical remedies include propitiation of Goddess Durga on Tuesdays for Mars Neechabhanga and feeding birds on Saturdays for Saturn.
+The ${payload.periodOfInterest} window is astrologically optimal for 4th house vehicular acquisition and occupational role expansion. Planetary transits and Ashtakavarga bindu distribution strongly support forward momentum. Recommended Strategic Realities & Practical Risk Mitigation: Ensure thorough contractual and warranty verification on all acquisitions, maintain liquid emergency capital buffers, and pace career transition milestones based on verified organizational deliverables rather than speculative forecasts.
 `.trim();
 
   return {

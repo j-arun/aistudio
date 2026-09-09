@@ -415,12 +415,14 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
     finalTimeline: string;
     validAnswers: ReasoningQuestion[];
     scrubbedNaCount: number;
+    updatedStorySynopsis?: string;
     autoDispatch: boolean;
   }) => {
     setServantOverride({
       finalTimeline: mergedData.finalTimeline,
       clarificationAnswers: mergedData.validAnswers,
       scrubbedNaCount: mergedData.scrubbedNaCount,
+      updatedStorySynopsis: mergedData.updatedStorySynopsis,
     });
     setSpeechStatus(
       `Reasoning Servant verified context (${mergedData.finalTimeline}). ${mergedData.scrubbedNaCount} N/A fields eliminated.`
@@ -513,10 +515,10 @@ The complete 9-planet transit matrix for **${periodLabel}** indicates targeted p
 
 ${transitLines}
 
-# 4. Synthesized Astrological Conclusion & Recommendations
+# 4. Synthesized Astrological Conclusion & Practical Realities
 The **${periodLabel}** window is astrologically optimal for **4th House (Vehicular & Fixed Asset)** acquisitions and **10th House (Occupational Role Elevation)** transitions.
 
-> **Parashari Guidance:** Auspicious timing aligns during the direct station of Jupiter and supportive lunar phases. Propitiate Durga on Tuesdays for Mars Neechabhanga and maintain Saturn's discipline with regular charitable offerings.`;
+> **Strategic Realities & Operational Pacing:** Auspicious timing aligns during the direct station of Jupiter and supportive lunar phases. Focus strictly on real-world execution: verify contractual terms, lock in advantageous financing rates, and maintain disciplined project milestones.`;
   }, [outboundPayload, periodLabel]);
 
   const defaultSecondaryReportMarkdown = useMemo(() => {
@@ -529,8 +531,8 @@ Cross-verified ${outboundPayload.cachedDasha.mahadasha}-${outboundPayload.cached
 # 3. Gochara (Transit) Impact & Timing (9-Planet Synthesis for ${periodLabel})
 Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gemini). Saturn's transit supports steady consolidation, while Jupiter's aspect to the 10th house ensures favorable timing.
 
-# 4. Synthesized Astrological Conclusion & Recommendations
-**Cross-Model Consensus: 99.2% Parity.** The dual reasoning engines independently conclude that ${periodLabel} is highly auspicious for major vehicular investment and commercial expansion.`;
+# 4. Synthesized Astrological Conclusion & Practical Realities
+**Cross-Model Consensus: 99.2% Parity.** The dual reasoning engines independently conclude that ${periodLabel} is highly auspicious for major vehicular investment and commercial expansion. Focus on verified operational deliverables and legal title verification rather than superstitious remedies.`;
   }, [outboundPayload, periodLabel]);
 
   const displayedPrimaryReport = liveStreamingText || dispatchResult?.primary.markdown || defaultPrimaryReportMarkdown;
