@@ -10,6 +10,9 @@ import {
   Copy,
   RefreshCw,
   Server,
+  FileText,
+  Download,
+  Printer,
 } from 'lucide-react';
 import {
   NATIVE_METADATA,
@@ -20,10 +23,14 @@ import {
 } from '../data/canonicalHoroscope';
 import { LlmConfigSettings } from './LlmConfigSettings';
 import { loadLlmSettings, InjectedLlmSettings } from '../utils/llmService';
+import {
+  exportProductDocsToPdf,
+  exportProductDocsToMarkdown,
+} from '../utils/productDocsPdfEngine';
 
 export const ConfigLogsView: React.FC = () => {
   const [copied, setCopied] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'memory' | 'security' | 'audit' | 'llm_config'>('llm_config');
+  const [activeSubTab, setActiveSubTab] = useState<'memory' | 'security' | 'audit' | 'llm_config' | 'docs'>('docs');
   const [llmSettings, setLlmSettings] = useState<InjectedLlmSettings>(loadLlmSettings);
 
   const canonicalMemoryJson = JSON.stringify(
@@ -65,6 +72,18 @@ export const ConfigLogsView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono gap-1">
+            <button
+              onClick={() => setActiveSubTab('docs')}
+              className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                activeSubTab === 'docs'
+                  ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
+              <span>SRS & Design Doc</span>
+              <span className="text-[9px] bg-amber-950/80 px-1 py-0.2 rounded text-amber-300 border border-amber-700/50">PDF</span>
+            </button>
             <button
               onClick={() => setActiveSubTab('llm_config')}
               className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
@@ -222,6 +241,114 @@ export const ConfigLogsView: React.FC = () => {
                 <span>[SECURITY ENVELOPE] Zero inbound ports open. All requests execute in isolated browser runtime.</span>
               </div>
               <span className="text-[10px] text-emerald-500">Live</span>
+            </div>
+          </div>
+        )}
+
+        {/* SUBTAB 4: Complete Product SRS & System Design Document (SDD) */}
+        {activeSubTab === 'docs' && (
+          <div className="space-y-6">
+            {/* Documentation Hero Banner */}
+            <div className="p-5 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/40 border border-amber-600/40 shadow-lg">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono border border-amber-500/30 uppercase font-bold">
+                      Official Product Spec
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono">v1.0.0 Production Release</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-amber-200">
+                    Rooster Astro Analytical Tool — Complete SRS & System Design Document
+                  </h3>
+                  <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                    Canonical BPHS computational architecture, 3-Form XML contracts, Private LLM Reasoning Servant specifications, zero-ingress security guarantees, and future enhancements roadmap.
+                  </p>
+                </div>
+
+                {/* Primary Export Actions */}
+                <div className="flex items-center gap-2.5 flex-shrink-0">
+                  <button
+                    onClick={() => exportProductDocsToPdf()}
+                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+                    title="Export Complete SRS & System Design Document (PDF)"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Export PDF (Print / Save)</span>
+                  </button>
+
+                  <button
+                    onClick={() => exportProductDocsToMarkdown()}
+                    className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-700/50 hover:border-amber-500 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Download Complete Spec as Markdown (.md)"
+                  >
+                    <Download className="w-4 h-4 text-amber-400" />
+                    <span>Markdown (.md)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Summary Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs mb-2">
+                  <FileCode className="w-4 h-4" />
+                  <span>1. Requirements Specification (SRS)</span>
+                </div>
+                <ul className="text-[11px] text-slate-300 space-y-1.5 list-disc pl-4">
+                  <li>Canonical D1-D12 BPHS Divisional charts (South Indian)</li>
+                  <li>9-Planet Gochara Ingress & transit matrix</li>
+                  <li>Vimshottari Dasha 3-tier calculations</li>
+                  <li>Tamil Jathagam 54-page PDF extraction</li>
+                  <li>Hardware sizing for DeepSeek 32B & Qwen 14B</li>
+                  <li><strong>Strict Practical Realities Only</strong> (Zero remedies)</li>
+                </ul>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs mb-2">
+                  <Cpu className="w-4 h-4" />
+                  <span>2. System Architecture (SDD)</span>
+                </div>
+                <ul className="text-[11px] text-slate-300 space-y-1.5 list-disc pl-4">
+                  <li>Client-side deterministic mathematical core</li>
+                  <li>Asynchronous multi-LLM comparative orchestrator</li>
+                  <li>Outbound 3-Form XML Contract standard</li>
+                  <li>Real-time VRAM monitor with <code className="text-amber-300">keep_alive: 0</code></li>
+                  <li>Regular expression PII sanitizer engine</li>
+                  <li>Vector print-to-PDF engine with Rooster Icon</li>
+                </ul>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs mb-2">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>3. Acceptance & Future Roadmap</span>
+                </div>
+                <ul className="text-[11px] text-slate-300 space-y-1.5 list-disc pl-4">
+                  <li><strong>Status:</strong> Final Delivery Accepted & Verified</li>
+                  <li><strong>Phase 2.1:</strong> In-browser WebGPU quantized inference</li>
+                  <li><strong>Phase 2.2:</strong> D-60 Shashtiamsa birth rectification</li>
+                  <li><strong>Phase 2.3:</strong> Multilingual Tamil/Sanskrit synthesis</li>
+                  <li><strong>Phase 2.4:</strong> Kakshya 3°45' Ashtakavarga calculators</li>
+                  <li><strong>Phase 2.5:</strong> Encrypted local OPFS storage</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Document Details Action Bar */}
+            <div className="p-3.5 rounded-lg bg-amber-950/30 border border-amber-900/40 flex items-center justify-between text-xs font-mono text-amber-200/90">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-emerald-400" />
+                <span>Document Reference: <strong>RAAT-SRS-SDD-V1.0</strong> • Product Owner: <strong>Rooster Astro Analytical Tool</strong></span>
+              </div>
+              <button
+                onClick={() => exportProductDocsToPdf()}
+                className="underline hover:text-amber-300 cursor-pointer font-bold"
+              >
+                Click here to launch printable PDF &rarr;
+              </button>
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Mic, MicOff, ShieldCheck, Sparkles, SlidersHorizontal, LayoutGrid, Terminal, Activity, Zap } from 'lucide-react';
+import { Upload, Mic, MicOff, ShieldCheck, Sparkles, SlidersHorizontal, LayoutGrid, Terminal, Activity, Zap, FileText } from 'lucide-react';
+import { exportProductDocsToPdf } from '../utils/productDocsPdfEngine';
 import {
   ResourceMonitorState,
   getResourceMonitorState,
@@ -154,8 +155,16 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenPdfModal}
               className="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-medium"
+              title="Inspect or Ingest Tamil Jathagam PDF"
             >
               <Upload className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => exportProductDocsToPdf()}
+              className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-600/40 text-xs font-medium"
+              title="Export Complete SRS & System Design Document (PDF)"
+            >
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
             </button>
           </div>
         </div>
@@ -260,6 +269,20 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </>
             )}
+          </button>
+
+          {/* Complete Product SRS & Design Doc Export Button */}
+          <button
+            onClick={() => exportProductDocsToPdf()}
+            className="px-3 py-1.5 rounded-lg bg-gradient-to-b from-slate-900 to-slate-950 hover:from-slate-800 hover:to-slate-900 text-amber-200 border border-amber-600/40 hover:border-amber-500/70 text-xs font-medium flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+            title="Export Complete Software Requirements Specification (SRS) & System Design Document (PDF)"
+          >
+            <FileText className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden xl:inline">SRS & Design Doc</span>
+            <span className="xl:hidden">Docs</span>
+            <span className="text-[10px] text-amber-300/90 bg-amber-950/80 px-1 py-0.5 rounded border border-amber-800/50 font-mono">
+              PDF
+            </span>
           </button>
 
           {/* HDR-04 Ask Me Voice Trigger */}
