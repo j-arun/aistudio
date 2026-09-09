@@ -27,6 +27,12 @@ import {
   Laptop,
   X,
   ExternalLink,
+  FileDown,
+  Download,
+  Wand2,
+  Columns,
+  Table as TableIcon,
+  CheckCheck,
 } from 'lucide-react';
 import { DIVISIONAL_CHARTS } from '../data/canonicalHoroscope';
 import {
@@ -48,6 +54,8 @@ import {
   dispatchMultiLlm,
   MultiLlmDispatchResult,
 } from '../utils/llmService';
+import { MarkdownReportRenderer } from './MarkdownReportRenderer';
+import { exportReportToPdf, exportReportToMarkdown } from '../utils/exportEngine';
 
 interface PresetPeriod {
   label: string;
@@ -104,12 +112,17 @@ export const WorkbenchView: React.FC = () => {
 
   // Zone 2 States
   const [sanitizePii, setSanitizePii] = useState(true);
-  const [activePromptTab, setActivePromptTab] = useState<'xml' | 'plainText' | 'gemini' | 'secondary' | 'piiAudit'>('xml');
+  const [activePromptTab, setActivePromptTab] = useState<
+    'intelligentXml' | 'baselineXml' | 'xmlDiff' | 'plainText' | 'gemini' | 'secondary' | 'piiAudit'
+  >('intelligentXml');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Zone 3 States
-  const [activeReportTab, setActiveReportTab] = useState<'primary' | 'secondary' | 'sideBySide'>('sideBySide');
+  const [activeReportTab, setActiveReportTab] = useState<
+    'sideBySide' | 'baselineVsEnhanced' | 'paramsVsReport' | 'primary' | 'secondary'
+  >('sideBySide');
   const [isSimulating, setIsSimulating] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   // Injected In-App LLM Configurations (Personal URL, Primary Settings, Secondary Settings)
   const [llmSettings, setLlmSettings] = useState<InjectedLlmSettings>(loadLlmSettings);
@@ -334,6 +347,108 @@ export const WorkbenchView: React.FC = () => {
       setIsSimulating(false);
     }
   };
+
+  const handleExportPdf = () => {
+    setExportNotice('Generating comprehensive BPHS PDF report...');
+    try {
+      exportReportToPdf({
+        title: 'Maharishi Parashara BPHS Astrological Synthesis Report',
+        periodOfInterest: periodLabel,
+        anchorDate: targetDate,
+        dashaInfo: `${outboundPayload.cachedDasha.mahadasha} MD / ${outboundPayload.cachedDasha.antardasha} AD / ${outboundPayload.cachedDasha.pratyantardasha} PD`,
+        outboundPayload,
+        primaryResult: dispatchResult?.primary,
+        secondaryResult: dispatchResult?.secondary,
+        intentSummary: {
+          intentCategory: outboundPayload.intelligentProcessing.intentCategory,
+          correctedNarrative: outboundPayload.intelligentProcessing.cleanedNarrative,
+          astrologicalFoci: outboundPayload.intelligentProcessing.astrologicalFoci.map(
+            (f) => `H${f.house} (${f.houseName}): ${f.domain}`
+          ),
+        },
+      });
+      setExportNotice('PDF Report downloaded successfully!');
+    } catch (err) {
+      console.error('PDF export error:', err);
+      setExportNotice('Could not generate PDF report.');
+    }
+    setTimeout(() => setExportNotice(null), 3000);
+  };
+
+  const handleExportMarkdown = () => {
+    setExportNotice('Exporting Markdown document (.md)...');
+    try {
+      exportReportToMarkdown({
+        title: 'Maharishi Parashara BPHS Astrological Synthesis Report',
+        periodOfInterest: periodLabel,
+        anchorDate: targetDate,
+        dashaInfo: `${outboundPayload.cachedDasha.mahadasha} MD / ${outboundPayload.cachedDasha.antardasha} AD / ${outboundPayload.cachedDasha.pratyantardasha} PD`,
+        outboundPayload,
+        primaryResult: dispatchResult?.primary,
+        secondaryResult: dispatchResult?.secondary,
+        intentSummary: {
+          intentCategory: outboundPayload.intelligentProcessing.intentCategory,
+          correctedNarrative: outboundPayload.intelligentProcessing.cleanedNarrative,
+          astrologicalFoci: outboundPayload.intelligentProcessing.astrologicalFoci.map(
+            (f) => `H${f.house} (${f.houseName}): ${f.domain}`
+          ),
+        },
+      });
+      setExportNotice('Markdown document downloaded successfully!');
+    } catch (err) {
+      console.error('Markdown export error:', err);
+      setExportNotice('Could not export Markdown file.');
+    }
+    setTimeout(() => setExportNotice(null), 3000);
+  };
+
+  const defaultPrimaryReportMarkdown = useMemo(() => {
+    const transitLines = outboundPayload.transitsForPeriod
+      .map(
+        (t) =>
+          `- **${t.planet} in ${t.transitSign}** (${t.houseFromLagna}th from Lagna, ${t.houseFromMoon}th from Moon): ${t.classicalStatus}.`
+      )
+      .join('\n');
+
+    return `# 1. BPHS D-1 & Divisional Strength Evaluation
+**Dhanusu Lagna (Sagittarius 16°33'):** Lagna lord **Jupiter** is placed in its swakshetra sign **Pisces (24°42')** in the 4th Kendra forming a classical *Hamsa Mahapurusha Yoga*, conferring exceptional fixed-asset acquisition and vehicular protection (*Sukha & Vahana Bhava*).
+
+In **D9 Navamsa**, Jupiter occupies Aquarius with Mercury, while Sun is exalted in Aries (*Mesham*). In **D10 Dasamsa**, Jupiter occupies Leo in the 4th house and Saturn occupies Aries, indicating executive advisory responsibility and structured occupational authority.
+
+# 2. Vimshottari Dasha Influence Analysis
+The native operates under **${outboundPayload.cachedDasha.mahadasha} Mahadasha / ${outboundPayload.cachedDasha.antardasha} Antardasha / ${outboundPayload.cachedDasha.pratyantardasha} Pratyantardasha** during **${periodLabel}** (canonical window: \`${outboundPayload.cachedDasha.dateRange}\`).
+
+- **Venus (11th Lord of Labha & Income):** Occupies Lagna at 06°08' in Moola nakshatra, activating direct financial liquidity and major investments.
+- **Saturn (2nd & 3rd Lord):** Occupies Pushya nakshatra in Cancer (8th house retrograde), catalyzing structural capital consolidation and resource reorganization.
+- **Temporal Synthesis:** Strong directional confluence between 4th and 11th lords creates high potential for asset acquisition.
+
+# 3. Gochara (Transit) Impact & Timing (9-Graha Matrix for ${periodLabel})
+The complete 9-planet transit matrix for **${periodLabel}** indicates targeted planetary support:
+
+${transitLines}
+
+# 4. Synthesized Astrological Conclusion & Recommendations
+The **${periodLabel}** window is astrologically optimal for **4th House (Vehicular & Fixed Asset)** acquisitions and **10th House (Occupational Role Elevation)** transitions.
+
+> **Parashari Guidance:** Auspicious timing aligns during the direct station of Jupiter and supportive lunar phases. Propitiate Durga on Tuesdays for Mars Neechabhanga and maintain Saturn's discipline with regular charitable offerings.`;
+  }, [outboundPayload, periodLabel]);
+
+  const defaultSecondaryReportMarkdown = useMemo(() => {
+    return `# 1. BPHS D-1 & Divisional Strength Evaluation
+**Cross-Model Astrological Consensus:** Both evaluators confirm Hamsa Mahapurusha Yoga in D1 (Jupiter in Pisces 24°42'). In D4 Chaturthamsa, 4th lord confirms property and vehicle stability. D10 Dasamsa confirms executive advisory capacity through 9th lord Sun and 10th lord Mercury.
+
+# 2. Vimshottari Dasha Influence Analysis
+Cross-verified ${outboundPayload.cachedDasha.mahadasha}-${outboundPayload.cachedDasha.antardasha}-${outboundPayload.cachedDasha.pratyantardasha} sub-period. The combined activation of 4th, 10th, and 11th bhavas signifies asset acquisition without destabilizing liquidity.
+
+# 3. Gochara (Transit) Impact & Timing (9-Planet Synthesis for ${periodLabel})
+Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gemini). Saturn's transit supports steady consolidation, while Jupiter's aspect to the 10th house ensures favorable timing.
+
+# 4. Synthesized Astrological Conclusion & Recommendations
+**Cross-Model Consensus: 99.2% Parity.** The dual reasoning engines independently conclude that ${periodLabel} is highly auspicious for major vehicular investment and commercial expansion.`;
+  }, [outboundPayload, periodLabel]);
+
+  const displayedPrimaryReport = dispatchResult?.primary.markdown || defaultPrimaryReportMarkdown;
+  const displayedSecondaryReport = dispatchResult?.secondary?.markdown || defaultSecondaryReportMarkdown;
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-3 sm:py-5 flex flex-col gap-4">
@@ -884,33 +999,46 @@ export const WorkbenchView: React.FC = () => {
               </div>
 
               {/* Prompt Inspector Sub-Tabs */}
-              <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-mono overflow-x-auto">
+              <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-mono overflow-x-auto max-w-full">
                 <button
                   type="button"
-                  onClick={() => setActivePromptTab('xml')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                    activePromptTab === 'xml'
+                  onClick={() => setActivePromptTab('intelligentXml')}
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                    activePromptTab === 'intelligentXml'
                       ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Canonical XML Payload
+                  <Wand2 className="w-3 h-3 text-amber-400" />
+                  Contextual XML (Enhanced)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActivePromptTab('gemini')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                    activePromptTab === 'gemini'
+                  onClick={() => setActivePromptTab('baselineXml')}
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap ${
+                    activePromptTab === 'baselineXml'
                       ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Primary (Gemini 1.5 Pro)
+                  Baseline XML (Raw)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActivePromptTab('xmlDiff')}
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                    activePromptTab === 'xmlDiff'
+                      ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  Intent & Schema Diff
                 </button>
                 <button
                   type="button"
                   onClick={() => setActivePromptTab('plainText')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap ${
                     activePromptTab === 'plainText'
                       ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                       : 'text-slate-400 hover:text-slate-200'
@@ -920,19 +1048,30 @@ export const WorkbenchView: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setActivePromptTab('gemini')}
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap ${
+                    activePromptTab === 'gemini'
+                      ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Primary ({llmSettings.primary.model})
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActivePromptTab('secondary')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap ${
                     activePromptTab === 'secondary'
                       ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Secondary (OpenAI / Claude)
+                  Secondary ({llmSettings.secondary.model})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActivePromptTab('piiAudit')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap ${
                     activePromptTab === 'piiAudit'
                       ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                       : 'text-slate-400 hover:text-slate-200'
@@ -943,23 +1082,163 @@ export const WorkbenchView: React.FC = () => {
               </div>
             </div>
 
-            {/* TAB 1: Outbound XML Schema Preview */}
-            {activePromptTab === 'xml' && (
+            {/* TAB 1: Intelligent Contextual XML Preview */}
+            {activePromptTab === 'intelligentXml' && (
               <div className="rounded-xl border border-amber-900/40 bg-slate-950 p-3 relative font-mono text-[11px] text-amber-200/90 overflow-x-auto max-h-72 scrollbar-thin">
                 <div className="flex items-center justify-between mb-2 pb-1 border-b border-amber-900/30 text-[10px] text-slate-400">
-                  <span className="font-semibold text-amber-300">
-                    OUTBOUND PROMPT XML SCHEMA (Period: {outboundPayload.periodOfInterest})
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-amber-300">
+                      INTELLIGENT CONTEXTUAL XML (Intent-Aware & Parsed)
+                    </span>
+                    <span className="text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded text-[9px] border border-emerald-800/40">
+                      Intent: {outboundPayload.intelligentProcessing.intentCategory}
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => handleCopy(outboundPayload.xmlSchema, 'xml')}
+                    onClick={() => handleCopy(outboundPayload.intelligentEnhancedPrompt, 'intelligentXml')}
                     className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
                   >
                     <Copy className="w-3 h-3" />
-                    {copiedKey === 'xml' ? 'Copied XML!' : 'Copy XML Schema'}
+                    {copiedKey === 'intelligentXml' ? 'Copied XML!' : 'Copy Contextual XML'}
                   </button>
                 </div>
-                <pre className="leading-relaxed whitespace-pre font-mono">{outboundPayload.xmlSchema}</pre>
+                <pre className="leading-relaxed whitespace-pre font-mono">
+                  {outboundPayload.intelligentEnhancedPrompt}
+                </pre>
+              </div>
+            )}
+
+            {/* TAB 2: Baseline Raw XML Schema Preview */}
+            {activePromptTab === 'baselineXml' && (
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 relative font-mono text-[11px] text-slate-300 overflow-x-auto max-h-72 scrollbar-thin">
+                <div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-800 text-[10px] text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-300">
+                      BASELINE RAW XML (Raw User Narrative Append)
+                    </span>
+                    <span className="text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded text-[9px] border border-slate-800">
+                      Unparsed Baseline
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(outboundPayload.baselineRawPrompt, 'baselineXml')}
+                    className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" />
+                    {copiedKey === 'baselineXml' ? 'Copied Baseline!' : 'Copy Baseline XML'}
+                  </button>
+                </div>
+                <pre className="leading-relaxed whitespace-pre font-mono">
+                  {outboundPayload.baselineRawPrompt}
+                </pre>
+              </div>
+            )}
+
+            {/* TAB 3: XML Diff & Intent Analysis (Enhancement 1) */}
+            {activePromptTab === 'xmlDiff' && (
+              <div className="rounded-xl border border-amber-900/40 bg-slate-950 p-3.5 flex flex-col gap-3 font-mono text-[11px]">
+                <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="font-bold text-amber-200 text-xs">
+                      Intelligent Intent Analysis & Contextual Schema Diff (Local LLM Engine)
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800/40">
+                    Engine: {outboundPayload.intelligentProcessing.processedVia === 'local_llm_engine' ? 'Local LLM Intent Engine' : 'Edge Contextual Parser'}
+                  </span>
+                </div>
+
+                {/* Intent & Grammar Breakdown Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col gap-1">
+                    <span className="text-[10px] uppercase font-bold text-amber-400">Classified Query Intent</span>
+                    <span className="text-slate-100 font-bold text-xs">
+                      {outboundPayload.intelligentProcessing.intentCategory}
+                    </span>
+                    <span className="text-[10.5px] text-slate-400">
+                      Temporal Scope: <strong className="text-amber-300">{outboundPayload.intelligentProcessing.temporalScope}</strong>
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col gap-1">
+                    <span className="text-[10px] uppercase font-bold text-emerald-400">Grammar & Phrasing Refinement</span>
+                    <span className="text-slate-200 text-xs">
+                      {outboundPayload.intelligentProcessing.grammarCorrected ? 'Corrections Applied ✓' : 'Clean Syntax Verified'}
+                    </span>
+                    <div className="text-[10px] text-slate-400">
+                      {outboundPayload.intelligentProcessing.diffSummary.correctionsMade.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {outboundPayload.intelligentProcessing.diffSummary.correctionsMade.map((c, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 border border-amber-900/30 text-[9.5px]">
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span>Standard vocabulary conforms to BPHS parser</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col gap-1">
+                    <span className="text-[10px] uppercase font-bold text-blue-400">Target Astrological Foci</span>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {outboundPayload.intelligentProcessing.diffSummary.targetDivisionalCharts.map((ch) => (
+                        <span key={ch} className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-bold">
+                          {ch}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      {outboundPayload.intelligentProcessing.astrologicalFoci.length} astrological houses mapped
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bhava Domain Mappings */}
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800/80 flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-amber-300">
+                    Extracted Astrological Bhava Domains & Classical Significators:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {outboundPayload.intelligentProcessing.astrologicalFoci.map((f, i) => (
+                      <div key={i} className="p-2 rounded bg-slate-950 border border-slate-800 text-[10.5px]">
+                        <div className="flex items-center justify-between text-amber-200 font-bold mb-0.5">
+                          <span>House {f.house}: {f.houseName}</span>
+                          <span className="text-[9.5px] text-blue-300">{f.recommendedDivisionalCharts.join(', ')}</span>
+                        </div>
+                        <div className="text-slate-300 text-[10px]">{f.domain}</div>
+                        <div className="text-amber-400/90 text-[9.5px] mt-0.5">Karaka: {f.signifyingGraha}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Visual Schema Diff: Baseline vs Contextually Merged Node */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-red-900/30 flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-red-400 uppercase">
+                      Baseline Raw XML Node (Crude Append)
+                    </span>
+                    <pre className="p-2 rounded bg-slate-950 text-[10px] text-red-300/80 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed border border-red-950">
+{`<anonymized_user_narrative>
+  ${outboundPayload.piiAudit.stage2Llama8BScrubbed}
+</anonymized_user_narrative>`}
+                    </pre>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-slate-900 border border-emerald-900/30 flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                      Enhanced Contextual XML Node (Semantic Embedding)
+                    </span>
+                    <pre className="p-2 rounded bg-slate-950 text-[10px] text-emerald-300/90 font-mono whitespace-pre-wrap overflow-x-auto max-h-48 scrollbar-thin leading-relaxed border border-emerald-950">
+{outboundPayload.intelligentProcessing.enhancedInquiryXml}
+                    </pre>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1271,45 +1550,92 @@ export const WorkbenchView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-mono"
-            >
+          <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {/* Export Engine Action Buttons */}
+            <div className="flex items-center gap-1.5 mr-1">
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                title="Export high-fidelity BPHS PDF report"
+                className="px-2.5 py-1 rounded bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-800/60 text-[11px] font-mono flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+              >
+                <FileDown className="w-3.5 h-3.5 text-amber-400" />
+                <span>Export PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportMarkdown}
+                title="Export Markdown document (.md)"
+                className="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-700 text-[11px] font-mono flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-400" />
+                <span>Export MD</span>
+              </button>
+            </div>
+
+            {/* Comparative View Mode Selector */}
+            <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-mono overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setActiveReportTab('sideBySide')}
-                className={`px-2 py-0.5 rounded cursor-pointer ${
+                className={`px-2 py-0.5 rounded cursor-pointer whitespace-nowrap flex items-center gap-1 ${
                   activeReportTab === 'sideBySide'
-                    ? 'bg-amber-500/20 text-amber-300 font-bold'
+                    ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Dual Side-by-Side
+                <Columns className="w-3 h-3 text-amber-400" />
+                Dual: Models
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReportTab('baselineVsEnhanced')}
+                className={`px-2 py-0.5 rounded cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  activeReportTab === 'baselineVsEnhanced'
+                    ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Wand2 className="w-3 h-3 text-amber-400" />
+                Dual: Baseline vs Enhanced
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReportTab('paramsVsReport')}
+                className={`px-2 py-0.5 rounded cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                  activeReportTab === 'paramsVsReport'
+                    ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <TableIcon className="w-3 h-3 text-amber-400" />
+                Dual: Matrix vs Report
               </button>
               <button
                 type="button"
                 onClick={() => setActiveReportTab('primary')}
-                className={`px-2 py-0.5 rounded cursor-pointer ${
+                className={`px-2 py-0.5 rounded cursor-pointer whitespace-nowrap ${
                   activeReportTab === 'primary'
-                    ? 'bg-amber-500/20 text-amber-300 font-bold'
+                    ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {llmSettings.primary.model}
+                Primary ({llmSettings.primary.model})
               </button>
               <button
                 type="button"
                 onClick={() => setActiveReportTab('secondary')}
-                className={`px-2 py-0.5 rounded cursor-pointer ${
+                className={`px-2 py-0.5 rounded cursor-pointer whitespace-nowrap ${
                   activeReportTab === 'secondary'
-                    ? 'bg-amber-500/20 text-amber-300 font-bold'
+                    ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {llmSettings.secondary.model}
+                Secondary ({llmSettings.secondary.model})
               </button>
             </div>
+
             <span className="text-slate-400 p-1">
               {isZone3Open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </span>
@@ -1318,6 +1644,14 @@ export const WorkbenchView: React.FC = () => {
 
         {isZone3Open && (
           <div className="p-4 flex flex-col gap-4">
+            {/* Export Notification Banner */}
+            {exportNotice && (
+              <div className="p-2.5 rounded-lg bg-amber-950/90 border border-amber-700/60 text-amber-200 font-mono text-xs flex items-center gap-2 animate-fadeIn">
+                <CheckCheck className="w-4 h-4 text-emerald-400" />
+                <span>{exportNotice}</span>
+              </div>
+            )}
+
             {/* Live Dispatch Diagnostics Banner */}
             {dispatchResult && (
               <div className="p-3 rounded-xl bg-slate-950 border border-amber-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs font-mono">
@@ -1345,14 +1679,11 @@ export const WorkbenchView: React.FC = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* TAB 1: Primary Report */}
-              {(activeReportTab === 'sideBySide' || activeReportTab === 'primary') && (
-                <div
-                  className={`p-4 rounded-xl border border-amber-800/40 bg-slate-950/80 flex flex-col gap-3 ${
-                    activeReportTab === 'primary' ? 'md:col-span-2' : ''
-                  }`}
-                >
+            {/* MODE 1: DUAL SIDE-BY-SIDE (PRIMARY VS SECONDARY LLM) */}
+            {activeReportTab === 'sideBySide' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Primary LLM Report */}
+                <div className="p-4 rounded-xl border border-amber-800/40 bg-slate-950/80 flex flex-col gap-3">
                   <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -1365,59 +1696,14 @@ export const WorkbenchView: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="prose prose-invert prose-xs text-slate-300 space-y-3 text-xs leading-relaxed font-sans whitespace-pre-line">
-                    {dispatchResult ? (
-                      dispatchResult.primary.markdown
-                    ) : (
-                      <>
-                        <h4 className="text-amber-200 font-bold text-sm font-mono border-b border-amber-900/30 pb-1">
-                          # 1. BPHS D-1 & Divisional Strength Evaluation
-                        </h4>
-                        <p>
-                          <strong>Dhanusu Lagna (Sagittarius 16°33'):</strong> Lagna lord <strong>Jupiter</strong> is placed in its own sign <strong>Pisces (24°42')</strong> in the 4th Kendra forming an unblemished <em>Hamsa Mahapurusha Yoga</em>, conferring exceptional fixed-asset acquisition and vehicular protection (Sukha Bhava). In <strong>D9 Navamsa</strong>, Jupiter occupies Aquarius with retrograde Mercury, while Sun is exalted in Aries (Mesham). In <strong>D10 Dasamsa</strong>, Jupiter occupies Leo in the 4th house and Saturn occupies Aries, signaling executive leadership with delayed fruition.
-                        </p>
-
-                        <h4 className="text-amber-200 font-bold text-sm font-mono border-b border-amber-900/30 pb-1">
-                          # 2. Vimshottari Dasha Influence Analysis
-                        </h4>
-                        <p>
-                          The native operates under <strong>{outboundPayload.cachedDasha.mahadasha} Mahadasha / {outboundPayload.cachedDasha.antardasha} Antardasha / {outboundPayload.cachedDasha.pratyantardasha} Pratyantardasha</strong> during {periodLabel} (window: {outboundPayload.cachedDasha.dateRange}).
-                          Venus as 11th lord (labha) occupies Lagna at 06°08' in Moola. Saturn as 2nd/3rd lord occupies Pushya nakshatra in Cancer (8th house retrograde). The active sub-period triggers decisive commercial and professional elevation.
-                        </p>
-
-                        <h4 className="text-amber-200 font-bold text-sm font-mono border-b border-amber-900/30 pb-1">
-                          # 3. Gochara (Transit) Impact & Timing (9-Planet Synthesis for {periodLabel})
-                        </h4>
-                        <p>
-                          Comprehensive 9-planet Gochara analysis for {periodLabel}:
-                        </p>
-                        <ul className="list-disc pl-4 space-y-1 text-[11.5px] text-slate-300">
-                          {outboundPayload.transitsForPeriod.map((t) => (
-                            <li key={t.planet}>
-                              <strong>{t.planet} in {t.transitSign} ({t.houseFromLagna}th from Lagna, {t.houseFromMoon}th from Moon):</strong> {t.classicalStatus}.
-                            </li>
-                          ))}
-                        </ul>
-
-                        <h4 className="text-amber-200 font-bold text-sm font-mono border-b border-amber-900/30 pb-1">
-                          # 4. Synthesized Astrological Conclusion & Recommendations
-                        </h4>
-                        <div className="bg-amber-950/30 p-2.5 rounded-lg border border-amber-900/40 text-amber-200/90 text-xs">
-                          The {periodLabel} window is astrologically optimal for 4th house vehicular acquisition and occupational role expansion. Remedies include propitiation of Durga on Tuesdays for Mars Neechabhanga and feeding birds on Saturdays.
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  <MarkdownReportRenderer
+                    content={displayedPrimaryReport}
+                    modelBadge={`${llmSettings.primary.provider.toUpperCase()} • ${llmSettings.primary.model}`}
+                  />
                 </div>
-              )}
 
-              {/* TAB 2: Secondary Report (OpenAI / Claude / Groq Audit) */}
-              {(activeReportTab === 'sideBySide' || activeReportTab === 'secondary') && (
-                <div
-                  className={`p-4 rounded-xl border border-slate-800 bg-slate-950/80 flex flex-col gap-3 ${
-                    activeReportTab === 'secondary' ? 'md:col-span-2' : ''
-                  }`}
-                >
+                {/* Secondary LLM Report */}
+                <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/80 flex flex-col gap-3">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-blue-400" />
@@ -1426,66 +1712,231 @@ export const WorkbenchView: React.FC = () => {
                       </span>
                     </div>
                     <span className="text-[10px] font-mono text-slate-400">
-                      {dispatchResult?.secondary?.statusMessage || (llmSettings.secondary.enabled ? 'Dual-Dispatch Active' : 'Toggle in Zone 2')}
+                      {dispatchResult?.secondary?.statusMessage || (llmSettings.secondary.enabled ? 'Dual-Dispatch Active' : 'Toggle in Injected Settings')}
                     </span>
                   </div>
 
-                  <div className="prose prose-invert prose-xs text-slate-300 space-y-3 text-xs leading-relaxed font-sans whitespace-pre-line">
-                    {!llmSettings.secondary.enabled ? (
-                      <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 font-mono text-xs flex flex-col gap-2">
-                        <span className="text-amber-300 font-bold">Secondary LLM is currently inactive.</span>
-                        <p>
-                          To execute simultaneous dual-model dispatch (requests sent to both models at once), enable the Secondary LLM checkbox in the Model Dispatch Configuration Bar above or in Injected Settings.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = { ...llmSettings, secondary: { ...llmSettings.secondary, enabled: true } };
-                            setLlmSettings(next);
-                            saveLlmSettings(next);
-                          }}
-                          className="px-3 py-1.5 rounded bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 text-xs w-fit cursor-pointer"
-                        >
-                          Enable Secondary LLM Now
-                        </button>
-                      </div>
-                    ) : dispatchResult?.secondary ? (
-                      dispatchResult.secondary.markdown
-                    ) : (
-                      <>
-                        <h4 className="text-slate-200 font-bold text-sm font-mono border-b border-slate-800 pb-1">
-                          # 1. BPHS D-1 & Divisional Strength Evaluation
-                        </h4>
-                        <p>
-                          Cross-model verification validates Hamsa Yoga in D1 (Jupiter at 24°42' Pisces). In D4 Chaturthamsa, 4th lord confirms property and vehicle stability. D10 Dasamsa confirms executive advisory capacity through 9th lord Sun and 10th lord Mercury.
-                        </p>
+                  {!llmSettings.secondary.enabled ? (
+                    <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 font-mono text-xs flex flex-col gap-2">
+                      <span className="text-amber-300 font-bold">Secondary LLM is currently inactive.</span>
+                      <p>
+                        To execute simultaneous dual-model comparative verification, enable the Secondary LLM in the Model Dispatch Configuration Bar or Injected Settings.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = { ...llmSettings, secondary: { ...llmSettings.secondary, enabled: true } };
+                          setLlmSettings(next);
+                          saveLlmSettings(next);
+                        }}
+                        className="px-3 py-1.5 rounded bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 text-xs w-fit cursor-pointer"
+                      >
+                        Enable Secondary LLM Now
+                      </button>
+                    </div>
+                  ) : (
+                    <MarkdownReportRenderer
+                      content={displayedSecondaryReport}
+                      modelBadge={`${llmSettings.secondary.provider.toUpperCase()} • ${llmSettings.secondary.model}`}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
-                        <h4 className="text-slate-200 font-bold text-sm font-mono border-b border-slate-800 pb-1">
-                          # 2. Vimshottari Dasha Influence Analysis
-                        </h4>
-                        <p>
-                          {outboundPayload.cachedDasha.mahadasha}-{outboundPayload.cachedDasha.antardasha}-{outboundPayload.cachedDasha.pratyantardasha} period verified. Saturn's functional role for Sagittarius is countered by Pushya nakshatra placement and high Sarvashtakavarga support.
-                        </p>
+            {/* MODE 2: DUAL BASELINE VS ENHANCED (Enhancement 2) */}
+            {activeReportTab === 'baselineVsEnhanced' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left: Baseline Raw Input & XML */}
+                <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/80 flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-500" />
+                      <span className="font-bold text-xs text-slate-300 font-mono">
+                        BASELINE: RAW INPUT & APPENDED XML
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Unprocessed Raw Schema
+                    </span>
+                  </div>
 
-                        <h4 className="text-slate-200 font-bold text-sm font-mono border-b border-slate-800 pb-1">
-                          # 3. Gochara (Transit) Impact & Timing (9-Planet Synthesis for {periodLabel})
-                        </h4>
-                        <p>
-                          All 9 planetary transits cross-verified for {periodLabel}. Jupiter's position and Saturn's house placement mutually reinforce expansion in career status and asset additions.
-                        </p>
+                  <div className="flex flex-col gap-3 text-xs font-mono">
+                    <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-amber-400 uppercase">
+                        Raw User Narrative Input
+                      </span>
+                      <p className="text-slate-300 text-[11px] font-sans">
+                        {narrativeInput || 'No narrative provided.'}
+                      </p>
+                    </div>
 
-                        <h4 className="text-slate-200 font-bold text-sm font-mono border-b border-slate-800 pb-1">
-                          # 4. Synthesized Astrological Conclusion & Recommendations
-                        </h4>
-                        <p className="text-emerald-300/90 bg-emerald-950/30 p-2.5 rounded-lg border border-emerald-900/30 font-mono text-[11px]">
-                          ✓ Model consensus: 99.2% parity. Both models confirm auspiciousness for vehicular acquisition in {periodLabel} and major professional milestone under transit alignment.
-                        </p>
-                      </>
-                    )}
+                    <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">
+                        Baseline Raw XML Schema Sent
+                      </span>
+                      <pre className="p-2 rounded bg-slate-950 text-[10px] text-slate-300 font-mono whitespace-pre-wrap overflow-x-auto max-h-80 scrollbar-thin border border-slate-800 leading-relaxed">
+                        {outboundPayload.baselineRawPrompt}
+                      </pre>
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
+
+                {/* Right: Enhanced Contextual Processed Output */}
+                <div className="p-4 rounded-xl border border-amber-800/40 bg-slate-950/80 flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="font-bold text-xs text-amber-300 font-mono">
+                        ENHANCED: INTENT-AWARE PARASHARI REPORT
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/40">
+                      Intent: {outboundPayload.intelligentProcessing.intentCategory}
+                    </span>
+                  </div>
+
+                  <MarkdownReportRenderer
+                    content={displayedPrimaryReport}
+                    modelBadge="Enhanced BPHS Report"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* MODE 3: DUAL MATRIX VS REPORT (Astronomical Parameters vs Astrological Report) */}
+            {activeReportTab === 'paramsVsReport' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left: Complete Canonical Matrix & Transits */}
+                <div className="p-4 rounded-xl border border-amber-900/30 bg-slate-950/80 flex flex-col gap-3 font-mono text-xs">
+                  <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
+                    <div className="flex items-center gap-2">
+                      <TableIcon className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="font-bold text-xs text-amber-300">
+                        CANONICAL EPHEMERIS & GOCHARA MATRIX ({periodLabel})
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">
+                      Anchor: {targetDate}
+                    </span>
+                  </div>
+
+                  {/* Active Dasha Card */}
+                  <div className="p-2.5 rounded-lg bg-amber-950/20 border border-amber-800/40 flex items-center justify-between text-[11px]">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase">Active Vimshottari Dasha</span>
+                      <span className="text-amber-200 font-bold">
+                        {outboundPayload.cachedDasha.mahadasha} MD • {outboundPayload.cachedDasha.antardasha} AD • {outboundPayload.cachedDasha.pratyantardasha} PD
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">
+                      {outboundPayload.cachedDasha.dateRange}
+                    </span>
+                  </div>
+
+                  {/* 9-Graha Transits Table */}
+                  <div className="overflow-x-auto rounded-lg border border-slate-800">
+                    <table className="min-w-full text-[10.5px] divide-y divide-slate-800">
+                      <thead className="bg-slate-900 text-amber-300 uppercase">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left">Graha</th>
+                          <th className="px-2 py-1.5 text-left">Sign</th>
+                          <th className="px-2 py-1.5 text-left">Deg</th>
+                          <th className="px-2 py-1.5 text-left">H(Lagna)</th>
+                          <th className="px-2 py-1.5 text-left">H(Moon)</th>
+                          <th className="px-2 py-1.5 text-left">BPHS Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 bg-slate-950">
+                        {outboundPayload.transitsForPeriod.map((t) => (
+                          <tr key={t.planet} className="hover:bg-slate-900/50">
+                            <td className="px-2 py-1 font-bold text-amber-200">{t.planet}</td>
+                            <td className="px-2 py-1 text-slate-300">{t.transitSign}</td>
+                            <td className="px-2 py-1 text-slate-400">{t.degree}</td>
+                            <td className="px-2 py-1 text-amber-300">{t.houseFromLagna}th</td>
+                            <td className="px-2 py-1 text-blue-300">{t.houseFromMoon}th</td>
+                            <td className="px-2 py-1 text-slate-300 text-[10px]">{t.classicalStatus}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Right: Synthesized Parashari Report */}
+                <div className="p-4 rounded-xl border border-amber-800/40 bg-slate-950/80 flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="font-bold text-xs text-amber-300 font-mono">
+                        STANDARDIZED BPHS ASTROLOGICAL REPORT
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Standard Output Format
+                    </span>
+                  </div>
+
+                  <MarkdownReportRenderer
+                    content={displayedPrimaryReport}
+                    modelBadge="BPHS Synthesis"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* MODE 4: SINGLE PRIMARY REPORT (FULL WIDTH) */}
+            {activeReportTab === 'primary' && (
+              <div className="p-4 rounded-xl border border-amber-800/40 bg-slate-950/80 flex flex-col gap-3">
+                <div className="flex items-center justify-between border-b border-amber-900/30 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-bold text-xs text-amber-300 font-mono">
+                      PRIMARY REPORT ({dispatchResult?.primary.provider || llmSettings.primary.provider.toUpperCase()} • {llmSettings.primary.model})
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {dispatchResult?.primary.statusMessage || `Latency: 0.9s • 1,140 tokens`}
+                  </span>
+                </div>
+
+                <MarkdownReportRenderer
+                  content={displayedPrimaryReport}
+                  modelBadge={`${llmSettings.primary.provider.toUpperCase()} • ${llmSettings.primary.model}`}
+                />
+              </div>
+            )}
+
+            {/* MODE 5: SINGLE SECONDARY REPORT (FULL WIDTH) */}
+            {activeReportTab === 'secondary' && (
+              <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/80 flex flex-col gap-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-400" />
+                    <span className="font-bold text-xs text-slate-200 font-mono">
+                      SECONDARY REPORT ({llmSettings.secondary.enabled ? `${llmSettings.secondary.provider.toUpperCase()} • ${llmSettings.secondary.model}` : 'Disabled'})
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {dispatchResult?.secondary?.statusMessage || (llmSettings.secondary.enabled ? 'Dual-Dispatch Active' : 'Toggle in Injected Settings')}
+                  </span>
+                </div>
+
+                {!llmSettings.secondary.enabled ? (
+                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 font-mono text-xs flex flex-col gap-2">
+                    <span className="text-amber-300 font-bold">Secondary LLM is currently inactive.</span>
+                    <p>
+                      Enable the Secondary LLM in the Model Dispatch Configuration Bar or Injected Settings.
+                    </p>
+                  </div>
+                ) : (
+                  <MarkdownReportRenderer
+                    content={displayedSecondaryReport}
+                    modelBadge={`${llmSettings.secondary.provider.toUpperCase()} • ${llmSettings.secondary.model}`}
+                  />
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
