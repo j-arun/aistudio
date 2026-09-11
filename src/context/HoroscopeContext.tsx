@@ -262,7 +262,7 @@ export interface HoroscopeState {
   divisionalCharts: DivisionalChart[];
   ashtakavarga: AshtakavargaSummary;
   dashaTimeline: DashaPeriod[];
-  shadbala: ShadbalaSummary;
+  shadbala: ShadbalaSummary[];
   yogas: AstroYoga[];
   sourcePdfName: string;
   pageCount: number;

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useHoroscope } from '../context/HoroscopeContext';
 import {
   Sparkles,
   ShieldCheck,
@@ -41,7 +42,6 @@ import {
   Trash2,
   Activity,
 } from 'lucide-react';
-import { DIVISIONAL_CHARTS } from '../data/canonicalHoroscope';
 import {
   buildBphsOutboundPrompt,
   OutboundPromptPayload,
@@ -113,6 +113,9 @@ const PRESET_PERIODS: PresetPeriod[] = [
 ];
 
 export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMonitor }) => {
+  const { horoscope } = useHoroscope();
+  const divisionalCharts = horoscope.divisionalCharts;
+
   // 32B Resource Monitor Subscription
   const [resourceState, setResourceState] = useState<ResourceMonitorState>(getResourceMonitorState());
   const [isWorkbenchFlushing, setIsWorkbenchFlushing] = useState(false);
@@ -194,11 +197,11 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
       periodLabel,
       targetDate,
       narrativeInput,
-      DIVISIONAL_CHARTS,
+      divisionalCharts,
       transits,
       servantOverride || undefined
     );
-  }, [periodLabel, targetDate, narrativeInput, transits, servantOverride]);
+  }, [periodLabel, targetDate, narrativeInput, divisionalCharts, transits, servantOverride]);
 
   const handleSelectPresetPeriod = (preset: PresetPeriod) => {
     setPeriodLabel(preset.label);
@@ -544,10 +547,10 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
       <div className="flex items-center justify-between bg-slate-900/80 px-3.5 py-2 rounded-xl border border-amber-900/30 text-xs font-mono">
         <div className="flex items-center gap-2 text-slate-300">
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-          <span className="font-bold text-amber-200">Component 3: Workbench Screen (Synthesis & Reasoning)</span>
+          <span className="font-bold text-amber-200">Workbench View (Synthesis & Reasoning)</span>
           <span className="text-slate-600 hidden sm:inline">•</span>
           <span className="text-emerald-400 hidden sm:inline text-[11px]">
-            Period-of-Interest Gochara Engine • Public LLM Outbound Packaging
+            Synchronized with Record [{horoscope.metadata.regNo}] ({horoscope.metadata.lagnaTamil} Lagna • {horoscope.metadata.nakshatraTamil})
           </span>
         </div>
 

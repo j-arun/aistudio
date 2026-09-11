@@ -1,9 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  NATIVE_METADATA,
-  GRAHA_COORDINATES,
-  DASHA_TIMELINE,
-} from '../data/canonicalHoroscope';
+import { useHoroscope } from '../context/HoroscopeContext';
 import { GrahaPosition, DashaPeriod } from '../types';
 import {
   ChevronRight,
@@ -19,6 +15,11 @@ import {
 } from 'lucide-react';
 
 export const LeftPanel: React.FC = () => {
+  const { horoscope } = useHoroscope();
+  const NATIVE_METADATA = horoscope.metadata;
+  const GRAHA_COORDINATES = horoscope.grahas;
+  const DASHA_TIMELINE = horoscope.dashaTimeline;
+
   // Section collapsible states
   const [isMetadataOpen, setIsMetadataOpen] = useState(true);
   const [isCoordinatesOpen, setIsCoordinatesOpen] = useState(true);

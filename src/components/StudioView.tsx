@@ -1,14 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { DivisionalChartId, DivisionalChart } from '../types';
-import {
-  DIVISIONAL_CHARTS,
-  GRAHA_COORDINATES,
-  ASHTAKAVARGA_DATA,
-  INDIVIDUAL_BINDU_POINTS,
-  SHADBALA_DATA,
-  ASTRO_YOGAS,
-  SIGN_NAMES,
-} from '../data/canonicalHoroscope';
+import { useHoroscope } from '../context/HoroscopeContext';
+import { INDIVIDUAL_BINDU_POINTS, SIGN_NAMES } from '../data/canonicalHoroscope';
 import { LeftPanel } from './LeftPanel';
 import { SouthIndianChart } from './SouthIndianChart';
 import {
@@ -30,18 +23,45 @@ import {
   ChevronsUp,
   Calculator,
   GripVertical,
+  UploadCloud,
+  FileUp,
+  FileCheck,
+  RefreshCw,
+  FileText,
+  X,
 } from 'lucide-react';
 
 export const StudioView: React.FC = () => {
+  const {
+    horoscope,
+    isIngesting,
+    parseProgress,
+    lastNotice,
+    ingestPdfFile,
+    loadBenchmarkPdf,
+    loadKumbhaSamplePdf,
+    clearNotice,
+  } = useHoroscope();
+
+  const DIVISIONAL_CHARTS = horoscope.divisionalCharts;
+  const GRAHA_COORDINATES = horoscope.grahas;
+  const ASHTAKAVARGA_DATA = horoscope.ashtakavarga;
+  const SHADBALA_DATA = horoscope.shadbala;
+  const ASTRO_YOGAS = horoscope.yogas;
+
   const [selectedChartId, setSelectedChartId] = useState<DivisionalChartId>('D1');
   const [matrixTab, setMatrixTab] = useState<'sarva' | 'individual' | 'shadbala' | 'yogas'>('sarva');
   const [selectedGrahaBindu, setSelectedGrahaBindu] = useState<string>('Jupiter');
 
   // Section collapse states for screen efficiency
   const [showLeftPanel, setShowLeftPanel] = useState(true);
+  const [isIngestSectionOpen, setIsIngestSectionOpen] = useState(true);
   const [isChartSectionOpen, setIsChartSectionOpen] = useState(true);
   const [isMatrixSectionOpen, setIsMatrixSectionOpen] = useState(true);
   const [showBphsMath, setShowBphsMath] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Left Panel Mouse-Driven Resizable Splitter State (40% default)
   const [leftPanelPercent, setLeftPanelPercent] = useState<number>(() => {
@@ -103,13 +123,41 @@ export const StudioView: React.FC = () => {
   const currentChart: DivisionalChart =
     DIVISIONAL_CHARTS.find((c) => c.id === selectedChartId) || DIVISIONAL_CHARTS[0];
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      ingestPdfFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      ingestPdfFile(file);
+    }
+  };
+
   const handleExpandAll = () => {
+    setIsIngestSectionOpen(true);
     setIsChartSectionOpen(true);
     setIsMatrixSectionOpen(true);
     setShowLeftPanel(true);
   };
 
   const handleCollapseAll = () => {
+    setIsIngestSectionOpen(false);
     setIsChartSectionOpen(false);
     setIsMatrixSectionOpen(false);
   };
@@ -258,6 +306,188 @@ export const StudioView: React.FC = () => {
               : { width: '100%', maxWidth: '100%' }
           }
         >
+          {/* SECTION 0: Jathagam PDF Ingest & Data Synchronization Pipeline (First Section) */}
+          <div className="bg-slate-900/90 rounded-2xl border border-amber-900/40 shadow-xl backdrop-blur overflow-hidden transition-all">
+            {/* Header & Collapse Trigger */}
+            <div
+              onClick={() => setIsIngestSectionOpen(!isIngestSectionOpen)}
+              className="p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-900/30 cursor-pointer select-none bg-slate-900 hover:bg-slate-800/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <FileUp className="w-4 h-4 text-amber-400" />
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-amber-200 tracking-wide uppercase flex items-center gap-2">
+                    Ingest PDF & Jathagam Pipeline
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Upload Querent Tamil Jathagam PDF to rewrite Studio & Workbench charts in real time
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 flex items-center gap-1">
+                  <FileCheck className="w-3 h-3" />
+                  <span>{horoscope.metadata.regNo}</span>
+                  <span className="opacity-70">({horoscope.pageCount}p)</span>
+                </span>
+                <button className="text-slate-400 hover:text-amber-300">
+                  {isIngestSectionOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {isIngestSectionOpen && (
+              <div className="p-3 sm:p-4 flex flex-col gap-3">
+                {/* Notice Banner */}
+                {lastNotice && (
+                  <div className="bg-emerald-950/70 border border-emerald-500/60 text-emerald-200 text-xs p-3 rounded-xl flex items-center justify-between animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <span>{lastNotice}</span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearNotice();
+                      }}
+                      className="p-1 text-emerald-400 hover:text-emerald-200"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Ingestion In-Progress Bar */}
+                {isIngesting && (
+                  <div className="bg-slate-950/80 border border-amber-600/50 rounded-xl p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-amber-300 flex items-center gap-2">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                        Parsing & Rewriting Horoscope Dataset...
+                      </span>
+                      <span className="text-amber-400 font-bold">{parseProgress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                      <div
+                        className="bg-gradient-to-r from-amber-600 via-amber-400 to-amber-300 h-full transition-all duration-300"
+                        style={{ width: `${parseProgress}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      {parseProgress < 30 && 'Scanning Tamil Jathagam tables and OCR planetary degrees...'}
+                      {parseProgress >= 30 && parseProgress < 65 && 'Extracting Sphutam coordinates, Lagna, and Dasha timeline...'}
+                      {parseProgress >= 65 && parseProgress < 90 && 'Computing BPHS harmonic Divisional Charts D1 through D12...'}
+                      {parseProgress >= 90 && 'Updating Studio divisional visualizer and synchronizing Workbench...'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload Zone & Quick Sample Triggers */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Dropzone / Upload Action */}
+                  <div
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`md:col-span-2 border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                      isDraggingOver
+                        ? 'border-amber-400 bg-amber-500/10'
+                        : 'border-slate-800 hover:border-amber-500/50 bg-slate-950/60 hover:bg-slate-900/60'
+                    }`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                    <UploadCloud className="w-8 h-8 text-amber-400 mb-1.5" />
+                    <span className="text-xs font-semibold text-slate-200">
+                      Drop Querent Tamil Jathagam PDF here, or <span className="text-amber-300 underline">browse file</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-1 max-w-md">
+                      Accepts standard 54-page Jathagam reports (Rasi, Navamsa, Graha Sphutam, Vimsottari Dasha)
+                    </span>
+                  </div>
+
+                  {/* Benchmark & Alternative Profile Buttons */}
+                  <div className="flex flex-col gap-2 justify-center">
+                    <button
+                      type="button"
+                      onClick={() => loadBenchmarkPdf()}
+                      disabled={isIngesting}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col ${
+                        horoscope.isBenchmark
+                          ? 'bg-amber-950/60 border-amber-500 text-amber-200 ring-1 ring-amber-500/40'
+                          : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold font-mono">Benchmark 54p (001ME)</span>
+                        {horoscope.isBenchmark && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        Mesha Lagna • Krittika-1 • Venus MD
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => loadKumbhaSamplePdf()}
+                      disabled={isIngesting}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col ${
+                        !horoscope.isBenchmark
+                          ? 'bg-amber-950/60 border-amber-500 text-amber-200 ring-1 ring-amber-500/40'
+                          : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold font-mono">Profile 48p (002KL)</span>
+                        {!horoscope.isBenchmark && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        Kumbha Lagna • Purva Bhadrapada • Jupiter MD
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Active Synchronized Data Ribbon */}
+                <div className="bg-slate-950/90 rounded-xl p-2.5 border border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-mono">Native Reg</span>
+                    <span className="font-bold text-slate-200 font-mono">{horoscope.metadata.regNo}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-mono">Ascendant (Lagna)</span>
+                    <span className="font-bold text-amber-300">{horoscope.metadata.lagnaTamil}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-mono">Janma Nakshatra</span>
+                    <span className="font-bold text-slate-200">{horoscope.metadata.nakshatraTamil}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-mono">Active Ingest File</span>
+                    <span className="font-bold text-emerald-400 font-mono truncate block" title={horoscope.sourcePdfName}>
+                      {horoscope.sourcePdfName}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* SECTION 1: Tabbed Divisional Chart Visualizer (Collapsible) */}
           <div className="bg-slate-900/90 rounded-2xl border border-amber-900/40 shadow-xl backdrop-blur overflow-hidden transition-all">
             {/* Header & Collapse Trigger */}

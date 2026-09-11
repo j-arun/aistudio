@@ -246,7 +246,10 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Sub-item A: Monitoring / Observability (Optimal Headroom) */}
                 <button
-                  onClick={() => {
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     setIsSystemDropdownOpen(false);
                     onOpenResourceMonitor();
                   }}
@@ -280,7 +283,10 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Sub-item B: Help (SRS & System Design Document) */}
                 <button
-                  onClick={() => {
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     setIsSystemDropdownOpen(false);
                     onOpenHelpDocs();
                   }}
