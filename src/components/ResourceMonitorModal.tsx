@@ -23,7 +23,9 @@ import {
   saveResourceMonitorSettings,
   flushModelFromMemory,
   notifyModelLoaded,
-  MODEL_FOOTPRINTS,
+  CANONICAL_LOCAL_MODELS,
+  resolveModelSpec,
+  setGlobalActiveLocalModel,
 } from '../utils/resourceMonitor';
 
 interface ResourceMonitorModalProps {
@@ -48,10 +50,7 @@ export const ResourceMonitorModal: React.FC<ResourceMonitorModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentSpec =
-    MODEL_FOOTPRINTS[state.activeModelId] ||
-    MODEL_FOOTPRINTS['deepseek_32b'] ||
-    Object.values(MODEL_FOOTPRINTS)[0];
+  const currentSpec = resolveModelSpec(state.activeModelId);
 
   const handleManualFlush = async () => {
     setIsFlushing(true);
@@ -65,7 +64,7 @@ export const ResourceMonitorModal: React.FC<ResourceMonitorModalProps> = ({
     if (state.modelStatus === 'loaded') {
       flushModelFromMemory({ reason: 'manual_flush' });
     } else {
-      notifyModelLoaded(state.activeModelId);
+      notifyModelLoaded(currentSpec.tag);
     }
   };
 
@@ -74,7 +73,7 @@ export const ResourceMonitorModal: React.FC<ResourceMonitorModalProps> = ({
   };
 
   const handleModelChange = (modelId: string) => {
-    saveResourceMonitorSettings({ activeModelId: modelId });
+    setGlobalActiveLocalModel(modelId);
   };
 
   // Color styling helpers
@@ -370,13 +369,15 @@ export const ResourceMonitorModal: React.FC<ResourceMonitorModalProps> = ({
                     Active Reasoning Model
                   </label>
                   <select
-                    value={state.activeModelId}
+                    value={currentSpec.tag}
                     onChange={(e) => handleModelChange(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-amber-200 text-xs font-mono cursor-pointer"
                   >
-                    <option value="deepseek_32b">DeepSeek-R1 32B (22.2 GB)</option>
-                    <option value="qwen_14b">Qwen 2.5 14B (10.5 GB)</option>
-                    <option value="llama_8b">Llama 3.1 8B (6.1 GB)</option>
+                    {CANONICAL_LOCAL_MODELS.map((m) => (
+                      <option key={m.tag} value={m.tag}>
+                        {m.name} (~{m.totalActiveGb} GB)
+                      </option>
+                    ))}
                   </select>
                   <p className="text-[11px] text-slate-400">
                     Adjusts baseline footprint calculations automatically.

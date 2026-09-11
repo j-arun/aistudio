@@ -8,6 +8,8 @@ export type ModelStatus = 'offloaded' | 'loaded' | 'loading' | 'flushing';
 export interface ModelFootprintSpec {
   id: string;
   name: string;
+  shortLabel: string;
+  tag: string;
   parameterSize: string; // e.g., "32B"
   quantization: string; // e.g., "Q4_K_M"
   weightsGb: number;
@@ -18,109 +20,186 @@ export interface ModelFootprintSpec {
   offloadedGb: number; // Always 0.0 GB
 }
 
+/**
+ * Standardized Canonical Local Models for uniform naming and configuration across all views.
+ */
+export const CANONICAL_LOCAL_MODELS: ModelFootprintSpec[] = [
+  {
+    id: 'deepseek-r1:32b',
+    name: 'DeepSeek-R1-Distill-Qwen-32B (Q4_K_M)',
+    shortLabel: 'DeepSeek-R1 32B',
+    tag: 'deepseek-r1:32b',
+    parameterSize: '32B',
+    quantization: 'Q4_K_M',
+    weightsGb: 19.8,
+    kvCacheGb: 1.6,
+    overheadGb: 0.8,
+    totalActiveGb: 22.2,
+    recommendedVramGb: 24.0,
+    offloadedGb: 0.0,
+  },
+  {
+    id: 'qwen2.5:14b',
+    name: 'Qwen 2.5 14B Instruct (Q4_K_M)',
+    shortLabel: 'Qwen 2.5 14B',
+    tag: 'qwen2.5:14b',
+    parameterSize: '14B',
+    quantization: 'Q4_K_M',
+    weightsGb: 8.8,
+    kvCacheGb: 1.2,
+    overheadGb: 0.5,
+    totalActiveGb: 10.5,
+    recommendedVramGb: 16.0,
+    offloadedGb: 0.0,
+  },
+  {
+    id: 'llama3.1:8b',
+    name: 'Llama 3.1 8B Instruct (Q4_K_M)',
+    shortLabel: 'Llama 3.1 8B',
+    tag: 'llama3.1:8b',
+    parameterSize: '8B',
+    quantization: 'Q4_K_M',
+    weightsGb: 4.9,
+    kvCacheGb: 0.8,
+    overheadGb: 0.4,
+    totalActiveGb: 6.1,
+    recommendedVramGb: 8.0,
+    offloadedGb: 0.0,
+  },
+  {
+    id: 'qwen2.5:32b',
+    name: 'Qwen 2.5 32B Instruct (Q4_K_M)',
+    shortLabel: 'Qwen 2.5 32B',
+    tag: 'qwen2.5:32b',
+    parameterSize: '32B',
+    quantization: 'Q4_K_M',
+    weightsGb: 19.8,
+    kvCacheGb: 1.6,
+    overheadGb: 0.8,
+    totalActiveGb: 22.2,
+    recommendedVramGb: 24.0,
+    offloadedGb: 0.0,
+  },
+  {
+    id: 'qwen2.5:7b',
+    name: 'Qwen 2.5 7B Instruct (Q4_K_M)',
+    shortLabel: 'Qwen 2.5 7B',
+    tag: 'qwen2.5:7b',
+    parameterSize: '7B',
+    quantization: 'Q4_K_M',
+    weightsGb: 4.2,
+    kvCacheGb: 0.7,
+    overheadGb: 0.3,
+    totalActiveGb: 5.2,
+    recommendedVramGb: 8.0,
+    offloadedGb: 0.0,
+  },
+  {
+    id: 'mistral:7b',
+    name: 'Mistral 7B Instruct (Q4_K_M)',
+    shortLabel: 'Mistral 7B',
+    tag: 'mistral:7b',
+    parameterSize: '7B',
+    quantization: 'Q4_K_M',
+    weightsGb: 4.1,
+    kvCacheGb: 0.7,
+    overheadGb: 0.3,
+    totalActiveGb: 5.1,
+    recommendedVramGb: 8.0,
+    offloadedGb: 0.0,
+  },
+];
+
 export const MODEL_FOOTPRINTS: Record<string, ModelFootprintSpec> = {
-  'deepseek_32b': {
-    id: 'deepseek_32b',
-    name: 'DeepSeek 32B (R1-Distill / Q4_K_M) — High-Reasoning Servant',
-    parameterSize: '32B',
-    quantization: 'Q4_K_M',
-    weightsGb: 19.8,
-    kvCacheGb: 1.6,
-    overheadGb: 0.8,
-    totalActiveGb: 22.2,
-    recommendedVramGb: 24.0,
-    offloadedGb: 0.0,
-  },
-  'qwen_14b': {
-    id: 'qwen_14b',
-    name: 'Qwen 2.5 14B (Q4_K_M) — Midweight Precision Balance',
-    parameterSize: '14B',
-    quantization: 'Q4_K_M',
-    weightsGb: 8.8,
-    kvCacheGb: 1.2,
-    overheadGb: 0.5,
-    totalActiveGb: 10.5,
-    recommendedVramGb: 16.0,
-    offloadedGb: 0.0,
-  },
-  'llama_8b': {
-    id: 'llama_8b',
-    name: 'Llama 3.1 8B (Q4_K_M) — Fast Small Footprint Baseline',
-    parameterSize: '8B',
-    quantization: 'Q4_K_M',
-    weightsGb: 4.9,
-    kvCacheGb: 0.8,
-    overheadGb: 0.4,
-    totalActiveGb: 6.1,
-    recommendedVramGb: 8.0,
-    offloadedGb: 0.0,
-  },
-  'qwen_32b': {
-    id: 'qwen_32b',
-    name: 'Qwen 2.5 32B (Q4_K_M) — Comprehensive Reasoning Engine',
-    parameterSize: '32B',
-    quantization: 'Q4_K_M',
-    weightsGb: 19.8,
-    kvCacheGb: 1.6,
-    overheadGb: 0.8,
-    totalActiveGb: 22.2,
-    recommendedVramGb: 24.0,
-    offloadedGb: 0.0,
-  },
-  // Backward-compatible keys
-  '32b_q4': {
-    id: '32b_q4',
-    name: '32B Quantized (Q4_K_M) — Standard Private Servant',
-    parameterSize: '32B',
-    quantization: 'Q4_K_M',
-    weightsGb: 19.8,
-    kvCacheGb: 1.6,
-    overheadGb: 0.8,
-    totalActiveGb: 22.2,
-    recommendedVramGb: 24.0,
-    offloadedGb: 0.0,
-  },
-  '32b_q5': {
-    id: '32b_q5',
-    name: '32B Quantized (Q5_K_M) — High Precision',
-    parameterSize: '32B',
-    quantization: 'Q5_K_M',
-    weightsGb: 23.4,
-    kvCacheGb: 1.8,
-    overheadGb: 0.9,
-    totalActiveGb: 26.1,
-    recommendedVramGb: 32.0,
-    offloadedGb: 0.0,
-  },
-  '14b_q4': {
-    id: '14b_q4',
-    name: '14B Quantized (Q4_K_M) — Midweight Option',
-    parameterSize: '14B',
-    quantization: 'Q4_K_M',
-    weightsGb: 8.8,
-    kvCacheGb: 1.2,
-    overheadGb: 0.5,
-    totalActiveGb: 10.5,
-    recommendedVramGb: 16.0,
-    offloadedGb: 0.0,
-  },
-  '8b_q4': {
-    id: '8b_q4',
-    name: '8B Quantized (Q4_K_M) — Lightweight Baseline',
-    parameterSize: '8B',
-    quantization: 'Q4_K_M',
-    weightsGb: 4.9,
-    kvCacheGb: 0.8,
-    overheadGb: 0.4,
-    totalActiveGb: 6.1,
-    recommendedVramGb: 8.0,
-    offloadedGb: 0.0,
-  },
+  'deepseek-r1:32b': CANONICAL_LOCAL_MODELS[0],
+  'deepseek_32b': CANONICAL_LOCAL_MODELS[0],
+  '32b_q4': CANONICAL_LOCAL_MODELS[0],
+  'qwen2.5:14b': CANONICAL_LOCAL_MODELS[1],
+  'qwen_14b': CANONICAL_LOCAL_MODELS[1],
+  '14b_q4': CANONICAL_LOCAL_MODELS[1],
+  'llama3.1:8b': CANONICAL_LOCAL_MODELS[2],
+  'llama_8b': CANONICAL_LOCAL_MODELS[2],
+  '8b_q4': CANONICAL_LOCAL_MODELS[2],
+  'qwen2.5:32b': CANONICAL_LOCAL_MODELS[3],
+  'qwen_32b': CANONICAL_LOCAL_MODELS[3],
+  'qwen2.5:7b': CANONICAL_LOCAL_MODELS[4],
+  'qwen_7b': CANONICAL_LOCAL_MODELS[4],
+  'mistral:7b': CANONICAL_LOCAL_MODELS[5],
+  'mistral_7b': CANONICAL_LOCAL_MODELS[5],
 };
+
+/**
+ * Resolves any model identifier, alias, or custom Ollama tag into a canonical specification.
+ */
+export function resolveModelSpec(idOrTag?: string): ModelFootprintSpec {
+  if (!idOrTag) return CANONICAL_LOCAL_MODELS[0];
+  const cleaned = idOrTag.trim().toLowerCase();
+
+  // 1. Direct match in canonical models list
+  const direct = CANONICAL_LOCAL_MODELS.find(
+    (m) => m.id.toLowerCase() === cleaned || m.tag.toLowerCase() === cleaned
+  );
+  if (direct) return direct;
+
+  // 2. Direct match in lookup table
+  if (MODEL_FOOTPRINTS[idOrTag]) {
+    return MODEL_FOOTPRINTS[idOrTag];
+  }
+
+  // 3. Normalized alias matching
+  if (cleaned.includes('deepseek') || (cleaned.includes('32b') && !cleaned.includes('qwen'))) {
+    return CANONICAL_LOCAL_MODELS[0];
+  }
+  if (cleaned.includes('qwen') && cleaned.includes('32b')) {
+    return CANONICAL_LOCAL_MODELS[3];
+  }
+  if (cleaned.includes('14b')) {
+    return CANONICAL_LOCAL_MODELS[1];
+  }
+  if (cleaned.includes('llama') || cleaned.includes('8b')) {
+    return CANONICAL_LOCAL_MODELS[2];
+  }
+  if (cleaned.includes('mistral')) {
+    return CANONICAL_LOCAL_MODELS[5];
+  }
+  if (cleaned.includes('7b')) {
+    return CANONICAL_LOCAL_MODELS[4];
+  }
+
+  // 4. Dynamic specification for arbitrary installed/custom model tags
+  let param = '8B';
+  let totalGb = 6.1;
+  const match = cleaned.match(/(\d+)b/);
+  if (match) {
+    const size = parseInt(match[1], 10);
+    param = `${size}B`;
+    if (size >= 30) totalGb = 22.2;
+    else if (size >= 14) totalGb = 10.5;
+    else if (size >= 7) totalGb = 6.1;
+    else totalGb = 3.8;
+  }
+
+  return {
+    id: idOrTag,
+    name: `${idOrTag} (Local Model / Q4)`,
+    shortLabel: idOrTag,
+    tag: idOrTag,
+    parameterSize: param,
+    quantization: 'Q4_K_M',
+    weightsGb: parseFloat((totalGb * 0.88).toFixed(1)),
+    kvCacheGb: 1.0,
+    overheadGb: 0.5,
+    totalActiveGb: totalGb,
+    recommendedVramGb: totalGb + 2,
+    offloadedGb: 0.0,
+  };
+}
 
 export interface ResourceMonitorState {
   modelStatus: ModelStatus;
   activeModelId: string;
+  activeModelName: string;
+  activeModelShortLabel: string;
   systemTotalRamGb: number;
   baseHostRamGb: number;
   modelVramUsedGb: number;
@@ -140,6 +219,8 @@ export interface ResourceMonitorState {
   lastFlushedAt: string | null;
   ollamaDetected: boolean;
   ollamaEndpoint: string;
+  installedOllamaModels: string[];
+  isModelInstalledLocally: boolean;
 }
 
 const STORAGE_KEY = 'bphs_resource_monitor_settings_v1';
@@ -152,9 +233,13 @@ function getDetectedRam(): number {
   return 32;
 }
 
+const defaultSpec = CANONICAL_LOCAL_MODELS[0];
+
 const DEFAULT_STATE: ResourceMonitorState = {
   modelStatus: 'offloaded',
-  activeModelId: 'deepseek_32b',
+  activeModelId: defaultSpec.tag,
+  activeModelName: defaultSpec.name,
+  activeModelShortLabel: defaultSpec.shortLabel,
   systemTotalRamGb: getDetectedRam(),
   baseHostRamGb: 5.4,
   modelVramUsedGb: 0.0,
@@ -175,6 +260,8 @@ const DEFAULT_STATE: ResourceMonitorState = {
   lastFlushedAt: null,
   ollamaDetected: false,
   ollamaEndpoint: 'http://localhost:11434',
+  installedOllamaModels: [],
+  isModelInstalledLocally: false,
 };
 
 // In-memory state singleton
@@ -205,7 +292,9 @@ function notifySubscribers(): void {
 }
 
 function recalculateMetrics(): void {
-  const spec = MODEL_FOOTPRINTS[currentState.activeModelId] || MODEL_FOOTPRINTS['32b_q4'];
+  const spec = resolveModelSpec(currentState.activeModelId);
+  currentState.activeModelName = spec.name;
+  currentState.activeModelShortLabel = spec.shortLabel;
   const isLoaded = currentState.modelStatus === 'loaded';
   const isLoading = currentState.modelStatus === 'loading';
 
@@ -233,22 +322,19 @@ function recalculateMetrics(): void {
     currentState.activeThreads = 2;
   }
 
-  // Traffic light thresholds:
-  // Green: < 65% (Optimal, model offloaded or plenty of headroom)
-  // Yellow: 65% - 85% (Elevated VRAM pressure, 32B resident)
-  // Red: > 85% (Critical memory pressure, swap thrashing risk)
+  // Traffic light thresholds
   if (ramPct > 85) {
     currentState.trafficStatus = 'red';
     currentState.trafficTitle = 'Critical Memory Contention (>85% RAM/VRAM Limit)';
     currentState.trafficAdvice =
       'Host and GPU memory is near capacity. High hazard of OS swap thrashing or application crash. Avoid starting new conversational rounds or loading large divisional datasets.';
     currentState.trafficGuidance =
-      'Immediate Flush Required: Stop new turns and execute Immediate Flush (keep_alive: 0) to free ~22.2 GB.';
+      `Immediate Flush Required: Stop new turns and execute Immediate Flush (keep_alive: 0) to free ~${spec.totalActiveGb} GB.`;
   } else if (ramPct >= 65 || isLoaded) {
     currentState.trafficStatus = 'yellow';
-    currentState.trafficTitle = 'Elevated VRAM Pressure (32B Model Resident in Memory)';
+    currentState.trafficTitle = `Elevated VRAM Pressure (${spec.shortLabel} Resident in Memory)`;
     currentState.trafficAdvice =
-      'The 32B model is resident in memory occupying ~22.2 GB. System memory pressure is elevated (65%-85%). Safe to finish your current narrative verification, but avoid concurrent heavy apps and plan to flush.';
+      `The ${spec.name} is resident in memory occupying ~${spec.totalActiveGb} GB. System memory pressure is elevated (65%-85%). Safe to finish your current narrative verification, but avoid concurrent heavy apps and plan to flush.`;
     currentState.trafficGuidance =
       'Safe to finish this conversation and flush this immediately (keep_alive: 0).';
   } else {
@@ -264,21 +350,42 @@ function recalculateMetrics(): void {
 }
 
 /**
- * Loads persisted monitor settings from LocalStorage
+ * Loads persisted monitor settings from LocalStorage and harmonizes with Injected LLM settings
  */
 export function initResourceMonitor(): void {
   if (typeof window === 'undefined') return;
   try {
+    let chosenModel = 'deepseek-r1:32b';
+
+    // Prioritize Injected LLM settings as the canonical source for model configuration
+    const llmRaw = localStorage.getItem('bphs_injected_llm_settings_v1');
+    if (llmRaw) {
+      const parsedLlm = JSON.parse(llmRaw);
+      if (parsedLlm?.personal?.model) {
+        chosenModel = parsedLlm.personal.model;
+      }
+      if (parsedLlm?.personal?.url) {
+        currentState.ollamaEndpoint = parsedLlm.personal.url.replace(/\/v1\/?$/, '').replace(/\/chat\/completions\/?$/, '');
+      }
+    }
+
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      if (parsed.activeModelId && !llmRaw) {
+        chosenModel = parsed.activeModelId;
+      }
       currentState = {
         ...currentState,
-        activeModelId: parsed.activeModelId || '32b_q4',
         systemTotalRamGb: parsed.systemTotalRamGb || getDetectedRam(),
         autoFlushOnPromptValidation: parsed.autoFlushOnPromptValidation ?? true,
       };
     }
+
+    const spec = resolveModelSpec(chosenModel);
+    currentState.activeModelId = spec.tag;
+    currentState.activeModelName = spec.name;
+    currentState.activeModelShortLabel = spec.shortLabel;
   } catch (e) {
     console.warn('Failed to load resource monitor settings:', e);
   }
@@ -286,10 +393,18 @@ export function initResourceMonitor(): void {
 }
 
 /**
- * Persists monitor settings to LocalStorage
+ * Persists monitor settings to LocalStorage and ensures bidirectional sync with Injected LLM settings
  */
 export function saveResourceMonitorSettings(updates: Partial<ResourceMonitorState>): void {
+  if (updates.activeModelId) {
+    const spec = resolveModelSpec(updates.activeModelId);
+    updates.activeModelId = spec.tag;
+    updates.activeModelName = spec.name;
+    updates.activeModelShortLabel = spec.shortLabel;
+  }
+
   currentState = { ...currentState, ...updates };
+
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(
@@ -303,15 +418,52 @@ export function saveResourceMonitorSettings(updates: Partial<ResourceMonitorStat
     } catch (e) {
       console.warn('Failed to save resource monitor settings:', e);
     }
+
+    // Synchronize to Injected LLM Settings if activeModelId was updated
+    if (updates.activeModelId) {
+      try {
+        const llmRaw = localStorage.getItem('bphs_injected_llm_settings_v1');
+        if (llmRaw) {
+          const parsed = JSON.parse(llmRaw);
+          if (parsed.personal) {
+            parsed.personal.model = currentState.activeModelId;
+            localStorage.setItem('bphs_injected_llm_settings_v1', JSON.stringify(parsed));
+          }
+        }
+        window.dispatchEvent(
+          new CustomEvent('bphs_llm_settings_changed', {
+            detail: { model: currentState.activeModelId },
+          })
+        );
+      } catch (e) {
+        console.warn('Failed to sync injected llm settings:', e);
+      }
+    }
   }
   recalculateMetrics();
 }
 
 /**
- * Simulates or notifies that the 32B model is actively loaded in memory for reasoning
+ * Globally sets the active local model across all screens (Configuration, Observability, Servant Modal, Workbench).
  */
-export function notifyModelLoaded(modelId: string = '32b_q4'): void {
-  currentState.activeModelId = modelId;
+export function setGlobalActiveLocalModel(modelIdOrTag: string): ModelFootprintSpec {
+  const spec = resolveModelSpec(modelIdOrTag);
+  saveResourceMonitorSettings({
+    activeModelId: spec.tag,
+  });
+  return spec;
+}
+
+/**
+ * Notifies that the chosen local model is actively loaded in memory for reasoning
+ */
+export function notifyModelLoaded(modelId?: string): void {
+  if (modelId) {
+    const spec = resolveModelSpec(modelId);
+    currentState.activeModelId = spec.tag;
+    currentState.activeModelName = spec.name;
+    currentState.activeModelShortLabel = spec.shortLabel;
+  }
   currentState.modelStatus = 'loaded';
   currentState.flushStatusMessage = null;
   recalculateMetrics();
@@ -328,7 +480,7 @@ export async function flushModelFromMemory(options?: {
 }): Promise<{ success: boolean; freedGb: number; message: string }> {
   const reason = options?.reason || 'manual_flush';
   const targetId = options?.modelId || currentState.activeModelId;
-  const spec = MODEL_FOOTPRINTS[targetId] || MODEL_FOOTPRINTS['32b_q4'];
+  const spec = resolveModelSpec(targetId);
   const freedGb = spec.totalActiveGb;
 
   currentState.modelStatus = 'flushing';
@@ -336,18 +488,22 @@ export async function flushModelFromMemory(options?: {
 
   let realOllamaUnloaded = false;
 
-  // Attempt real Ollama keep_alive: 0 call if reachable on localhost
+  // Attempt real Ollama keep_alive: 0 call using the active model tag
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1800);
 
-    const ollamaUrl = `${currentState.ollamaEndpoint}/api/generate`;
+    const cleanEndpoint = (currentState.ollamaEndpoint || 'http://localhost:11434')
+      .replace(/\/v1\/?$/, '')
+      .replace(/\/chat\/completions\/?$/, '');
+
+    const ollamaUrl = `${cleanEndpoint}/api/generate`;
     const response = await fetch(ollamaUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'qwen2.5:32b',
+        model: spec.tag,
         keep_alive: 0, // Ollama native command to immediately offload weights from VRAM
       }),
     });
@@ -358,7 +514,7 @@ export async function flushModelFromMemory(options?: {
       currentState.ollamaDetected = true;
     }
   } catch (err) {
-    // Expected in sandboxed browser or when Ollama is offline
+    // Expected in sandboxed browser or when Ollama daemon is offline
     realOllamaUnloaded = false;
   }
 
@@ -373,7 +529,7 @@ export async function flushModelFromMemory(options?: {
       ? 'Emergency Resource Purge Executed'
       : 'Manual Memory Flush Executed';
 
-  const message = `${reasonLabel}: Freed ~${freedGb} GB VRAM (keep_alive: 0)${
+  const message = `${reasonLabel}: Freed ~${freedGb} GB VRAM for ${spec.shortLabel} (keep_alive: 0)${
     realOllamaUnloaded ? ' • Verified Ollama API Offload' : ''
   }`;
 
@@ -388,22 +544,43 @@ export async function flushModelFromMemory(options?: {
 }
 
 /**
- * Checks whether Ollama is actively running locally on port 11434
+ * Checks whether Ollama is actively running locally and fetches the list of installed models.
  */
-export async function checkOllamaHealth(endpoint: string = 'http://localhost:11434'): Promise<boolean> {
+export async function checkOllamaHealth(endpoint?: string): Promise<boolean> {
+  const targetEndpoint = endpoint || currentState.ollamaEndpoint || 'http://localhost:11434';
+  const cleanEndpoint = targetEndpoint.replace(/\/v1\/?$/, '').replace(/\/chat\/completions\/?$/, '');
+  currentState.ollamaEndpoint = cleanEndpoint;
+
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch(`${endpoint}/api/tags`, {
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${cleanEndpoint}/api/tags`, {
       method: 'GET',
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    const isOnline = res.ok;
-    currentState.ollamaDetected = isOnline;
-    currentState.ollamaEndpoint = endpoint;
-    notifySubscribers();
-    return isOnline;
+
+    if (res.ok) {
+      const data = await res.json();
+      const modelsList: string[] = (data.models || []).map((m: any) => m.name || m.model).filter(Boolean);
+      currentState.ollamaDetected = true;
+      currentState.installedOllamaModels = modelsList;
+
+      const currentSpec = resolveModelSpec(currentState.activeModelId);
+      const isInstalled = modelsList.some(
+        (m) =>
+          m.toLowerCase() === currentSpec.tag.toLowerCase() ||
+          m.toLowerCase().includes(currentSpec.parameterSize.toLowerCase()) ||
+          m.toLowerCase().includes(currentSpec.id.toLowerCase())
+      );
+      currentState.isModelInstalledLocally = isInstalled;
+      notifySubscribers();
+      return true;
+    } else {
+      currentState.ollamaDetected = false;
+      notifySubscribers();
+      return false;
+    }
   } catch (e) {
     currentState.ollamaDetected = false;
     notifySubscribers();

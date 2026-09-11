@@ -29,7 +29,9 @@ import {
   flushModelFromMemory,
   notifyModelLoaded,
   checkOllamaHealth,
-  MODEL_FOOTPRINTS,
+  CANONICAL_LOCAL_MODELS,
+  resolveModelSpec,
+  setGlobalActiveLocalModel,
 } from '../utils/resourceMonitor';
 
 export const MonitoringObservabilityView: React.FC = () => {
@@ -66,10 +68,8 @@ export const MonitoringObservabilityView: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const currentSpec =
-    MODEL_FOOTPRINTS[state.activeModelId] ||
-    MODEL_FOOTPRINTS['deepseek_32b'] ||
-    Object.values(MODEL_FOOTPRINTS)[0];
+  // Canonical source of truth for active local LLM specification
+  const currentSpec = resolveModelSpec(state.activeModelId);
 
   const handleManualFlush = async () => {
     setIsFlushing(true);
@@ -147,13 +147,13 @@ export const MonitoringObservabilityView: React.FC = () => {
   };
 
   const handleModelChange = (modelId: string) => {
-    saveResourceMonitorSettings({ activeModelId: modelId });
+    const spec = setGlobalActiveLocalModel(modelId);
     setEventLogs((prev) => [
       {
         id: Date.now().toString(),
         time: new Date().toLocaleTimeString(),
         level: 'info',
-        message: `Active model target updated to: ${modelId}.`,
+        message: `Active model target updated across application to: ${spec.name} (${spec.tag}).`,
       },
       ...prev,
     ]);
@@ -295,18 +295,18 @@ export const MonitoringObservabilityView: React.FC = () => {
             <div className="flex items-center justify-between text-xs text-slate-400">
               <span className="flex items-center gap-1.5 font-medium">
                 <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                Model VRAM Status
+                Active Local LLM
               </span>
               <span className={`text-[10px] font-mono font-bold ${state.modelStatus === 'loaded' ? 'text-amber-400' : 'text-emerald-400'}`}>
                 {state.modelStatus === 'loaded' ? 'RESIDENT' : 'OFFLOADED'}
               </span>
             </div>
             <div className="mt-2">
-              <div className="text-xl font-bold font-mono text-slate-100 truncate">
-                {state.modelStatus === 'loaded' ? `${state.modelVramUsedGb.toFixed(1)} GB` : '0.0 GB (Zero VRAM)'}
+              <div className="text-sm sm:text-base font-bold font-mono text-amber-200 truncate" title={currentSpec.name}>
+                {currentSpec.shortLabel}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate" title={currentSpec.name}>
-                {currentSpec.parameterSize} {currentSpec.quantization} • {state.activeModelId}
+              <div className="text-[11px] text-slate-400 mt-0.5 truncate font-mono" title={currentSpec.tag}>
+                {currentSpec.tag} • ~{currentSpec.totalActiveGb} GB
               </div>
             </div>
           </div>
@@ -389,6 +389,93 @@ export const MonitoringObservabilityView: React.FC = () => {
       {/* Sub-Tab 1: Live Headroom & RAM */}
       {activeSubTab === 'telemetry' && (
         <div className="space-y-4">
+          {/* Active Local LLM System Status & Ollama Reachability */}
+          <div className="bg-slate-900/90 rounded-2xl border border-amber-900/40 p-4 sm:p-5 shadow-xl space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-bold text-amber-200">
+                  Configured Local LLM Status across System
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleProbeOllama}
+                  disabled={isCheckingOllama}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-mono transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Radio className={`w-3.5 h-3.5 ${isCheckingOllama ? 'animate-spin' : 'text-amber-400'}`} />
+                  <span>{isCheckingOllama ? 'Probing...' : 'Probe Local Ollama'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-[10px] text-slate-400 block uppercase font-sans">Active Local Model:</span>
+                <span className="text-sm font-bold text-amber-300 block truncate" title={currentSpec.name}>
+                  {currentSpec.name}
+                </span>
+                <div className="text-[11px] text-slate-400">
+                  Tag: <code className="text-amber-200 bg-slate-900 px-1 py-0.5 rounded">{currentSpec.tag}</code>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-[10px] text-slate-400 block uppercase font-sans">Hardware Footprint & VRAM:</span>
+                <span className="text-sm font-bold text-slate-200 block">
+                  ~{currentSpec.totalActiveGb} GB VRAM
+                </span>
+                <div className="text-[11px] text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>keep_alive: 0 Instant Purge</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-[10px] text-slate-400 block uppercase font-sans">Ollama Local Daemon:</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${state.ollamaDetected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                  <span className={`text-xs font-bold ${state.ollamaDetected ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    {state.ollamaDetected ? 'Online & Reachable' : 'Standby / Local Host'}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-400 truncate">
+                  Endpoint: {state.ollamaEndpoint}
+                </div>
+              </div>
+            </div>
+
+            {/* If Ollama has models installed */}
+            {state.installedOllamaModels && state.installedOllamaModels.length > 0 && (
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+                <span className="text-[11px] font-mono text-slate-400 block">
+                  Ollama Models Detected on Host ({state.installedOllamaModels.length}):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {state.installedOllamaModels.map((m) => {
+                    const isSelected = m.toLowerCase() === currentSpec.tag.toLowerCase();
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => handleModelChange(m)}
+                        className={`px-2 py-1 rounded text-xs font-mono transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow'
+                            : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-500/50'
+                        }`}
+                      >
+                        {m} {isSelected ? '(Active)' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Traffic Light Banner */}
           <div className={`p-4 rounded-xl border flex items-start gap-3.5 ${trafficBg}`}>
             <div className="mt-0.5">
@@ -498,7 +585,7 @@ export const MonitoringObservabilityView: React.FC = () => {
                   Local Model Memory Footprint & Hardware Viability Matrix
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Exact weight tensors, KV-cache, and runtime overhead breakdown across quantizations
+                  Exact weight tensors, KV-cache, and runtime overhead breakdown across canonical quantizations
                 </p>
               </div>
             </div>
@@ -508,34 +595,39 @@ export const MonitoringObservabilityView: React.FC = () => {
                 <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase font-mono border-b border-slate-800">
                   <tr>
                     <th className="p-3.5">Model Specification</th>
+                    <th className="p-3.5">Ollama Tag</th>
                     <th className="p-3.5">Quantization</th>
                     <th className="p-3.5">Weights</th>
                     <th className="p-3.5">KV-Cache (8k)</th>
-                    <th className="p-3.5">Total Active VRAM</th>
-                    <th className="p-3.5">Offloaded (keep_alive: 0)</th>
+                    <th className="p-3.5">Active VRAM</th>
+                    <th className="p-3.5">Offload (keep_alive: 0)</th>
                     <th className="p-3.5">16 GB Host</th>
                     <th className="p-3.5">24 GB Host</th>
                     <th className="p-3.5">32 GB Host</th>
+                    <th className="p-3.5 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 font-mono text-[11px]">
-                  {Object.values(MODEL_FOOTPRINTS).slice(0, 6).map((spec) => {
-                    const isCurrent = spec.id === state.activeModelId;
+                  {CANONICAL_LOCAL_MODELS.map((spec) => {
+                    const isCurrent = spec.tag.toLowerCase() === currentSpec.tag.toLowerCase();
                     return (
                       <tr
-                        key={spec.id}
+                        key={spec.tag}
                         className={`hover:bg-slate-800/40 transition-colors ${
                           isCurrent ? 'bg-amber-500/10 border-l-2 border-l-amber-400' : ''
                         }`}
                       >
-                        <td className="p-3.5 font-sans font-medium text-slate-100 flex items-center gap-2">
-                          <span>{spec.name}</span>
-                          {isCurrent && (
-                            <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded border border-amber-500/40 font-mono">
-                              ACTIVE
-                            </span>
-                          )}
+                        <td className="p-3.5 font-sans font-medium text-slate-100">
+                          <div className="flex items-center gap-2">
+                            <span>{spec.name}</span>
+                            {isCurrent && (
+                              <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded border border-amber-500/40 font-mono">
+                                ACTIVE
+                              </span>
+                            )}
+                          </div>
                         </td>
+                        <td className="p-3.5 text-amber-300/90 font-mono">{spec.tag}</td>
                         <td className="p-3.5 text-slate-400">{spec.quantization}</td>
                         <td className="p-3.5 text-amber-300">{spec.weightsGb} GB</td>
                         <td className="p-3.5 text-slate-400">{spec.kvCacheGb} GB</td>
@@ -559,6 +651,21 @@ export const MonitoringObservabilityView: React.FC = () => {
                         </td>
                         <td className="p-3.5">
                           <span className="text-emerald-400 font-bold">Optimal (&gt;6G free)</span>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          {isCurrent ? (
+                            <span className="text-[10px] text-emerald-400 font-mono font-bold">
+                              ✓ Selected
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleModelChange(spec.tag)}
+                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 text-[10px] font-mono transition-colors cursor-pointer"
+                            >
+                              Choose Model
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -611,28 +718,39 @@ export const MonitoringObservabilityView: React.FC = () => {
               Target Astrological Reasoning Model
             </h3>
             <p className="text-xs text-slate-400">
-              Choose the primary private local model to simulate or run against Ollama.
+              Choose the primary private local model configured across the application.
             </p>
             <div className="space-y-2 pt-2">
-              {[
-                { id: 'deepseek_32b', name: 'DeepSeek-R1-Distill-Qwen-32B (Q4_K_M)', footprint: '22.2 GB' },
-                { id: 'qwen_14b', name: 'Qwen 2.5 14B Instruct (Q4_K_M)', footprint: '10.5 GB' },
-                { id: 'llama_8b', name: 'Llama 3.1 8B Instruct (Q4_K_M)', footprint: '6.1 GB' },
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => handleModelChange(m.id)}
-                  className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                    state.activeModelId === m.id
-                      ? 'bg-amber-500/20 border-amber-500 text-amber-200 font-bold'
-                      : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-300'
-                  }`}
-                >
-                  <span className="text-xs">{m.name}</span>
-                  <span className="text-xs font-mono font-bold text-amber-300">{m.footprint}</span>
-                </button>
-              ))}
+              {CANONICAL_LOCAL_MODELS.map((m) => {
+                const isSelected = m.tag.toLowerCase() === currentSpec.tag.toLowerCase();
+                return (
+                  <button
+                    key={m.tag}
+                    type="button"
+                    onClick={() => handleModelChange(m.tag)}
+                    className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-200 font-bold shadow'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold">{m.name}</span>
+                        {isSelected && (
+                          <span className="text-[9px] bg-amber-500 text-slate-950 font-bold px-1.5 py-0.2 rounded font-mono">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Tag: {m.tag} • Param: {m.parameterSize} ({m.quantization})
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-amber-300">~{m.totalActiveGb} GB</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

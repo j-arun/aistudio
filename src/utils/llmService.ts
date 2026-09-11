@@ -1,9 +1,10 @@
 import { OutboundPromptPayload } from './promptBuilder';
+import { saveResourceMonitorSettings } from './resourceMonitor';
 
 export interface PersonalLlmConfig {
   enabled: boolean;
   url: string; // e.g. "http://localhost:11434/v1"
-  model: string; // e.g. "llama3.1:8b"
+  model: string; // e.g. "deepseek-r1:32b"
   apiKey?: string;
   pipelineRole: 'pii_sanitization' | 'edge_synthesis' | 'both';
   temperature: number;
@@ -38,7 +39,7 @@ export const DEFAULT_LLM_SETTINGS: InjectedLlmSettings = {
   personal: {
     enabled: true,
     url: 'http://localhost:11434/v1',
-    model: 'llama3.1:8b',
+    model: 'deepseek-r1:32b',
     apiKey: '',
     pipelineRole: 'pii_sanitization',
     temperature: 0.1,
@@ -108,6 +109,9 @@ export function saveLlmSettings(settings: InjectedLlmSettings): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    if (settings.personal?.model) {
+      saveResourceMonitorSettings({ activeModelId: settings.personal.model });
+    }
   } catch (err) {
     console.error('Failed to save LLM settings to localStorage:', err);
   }

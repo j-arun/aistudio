@@ -9,6 +9,7 @@
 
 import { runTwoStageSanitization } from './piiSanitizer';
 import { preprocessAndCorrectText } from './intelligentPromptEngine';
+import { getResourceMonitorState, notifyModelLoaded } from './resourceMonitor';
 
 export interface ReasoningQuestion {
   id: string;
@@ -1162,3 +1163,65 @@ export function mergeServantState(
     updatedTimelineValidation,
   };
 }
+
+/**
+ * Executes the Private LLM Reasoning Agent against unformatted text.
+ * If local Ollama daemon is reachable, dispatches generation with keep_alive: 0.
+ * Seamlessly merges into the 3-Pillar Context Engine & 3-Form XML.
+ */
+export async function runPrivateLlmReasoningAgent(
+  rawInput: string,
+  targetDate: string = '2026-09-07',
+  modelTag?: string
+): Promise<ServantEvaluationResult> {
+  const monitor = getResourceMonitorState();
+  const activeTag = modelTag || monitor.activeModelId || 'deepseek-r1:32b';
+  notifyModelLoaded(activeTag);
+
+  let transformedByOllama: string | null = null;
+  const cleanEndpoint = (monitor.ollamaEndpoint || 'http://localhost:11434')
+    .replace(/\/+$/, '')
+    .replace(/\/v1\/?$/, '');
+
+  if (rawInput && rawInput.trim().length > 0) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const response = await fetch(`${cleanEndpoint}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: activeTag,
+          prompt: `You are an expert Vedic Astrological Reasoning Agent. Transform this unformatted querent narrative into an articulate, structured astrological enquiry dossier without filler words, identifying the primary life domain (Career, Relationship, Wealth, Health), strategic YYYY-MM timeline, and key astrological questions:\n\n"${rawInput}"\n\nProvide the synthesized astrological narrative directly:`,
+          stream: false,
+          keep_alive: 0,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.response && data.response.trim().length > 15) {
+          transformedByOllama = data.response.trim();
+        }
+      }
+    } catch {
+      // Gracefully fall back to local rule-based Vedic parser
+    }
+  }
+
+  const baseResult = evaluateWithPrivateLlmServant(rawInput, targetDate);
+  if (transformedByOllama) {
+    return {
+      ...baseResult,
+      compressedNarrative: transformedByOllama,
+      structuredNarrative: {
+        ...baseResult.structuredNarrative,
+        synthesizedNarrative: transformedByOllama,
+      },
+    };
+  }
+  return baseResult;
+}
+

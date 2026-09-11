@@ -22,6 +22,11 @@ import {
   saveLlmSettings,
   testEndpointConnection,
 } from '../utils/llmService';
+import {
+  CANONICAL_LOCAL_MODELS,
+  resolveModelSpec,
+  setGlobalActiveLocalModel,
+} from '../utils/resourceMonitor';
 
 interface LlmConfigSettingsProps {
   settings: InjectedLlmSettings;
@@ -298,15 +303,56 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
 
             {/* Model Name */}
             <div className="md:col-span-4 flex flex-col gap-1">
-              <label className="text-xs font-mono text-slate-300 font-semibold">Local Model Tag:</label>
-              <input
-                type="text"
-                value={formData.personal.model}
-                onChange={(e) => handlePersonalChange('model', e.target.value)}
+              <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
+                <span>Local Model Target:</span>
+                <span className="text-[10px] text-amber-400 font-mono">
+                  ~{resolveModelSpec(formData.personal.model).totalActiveGb} GB VRAM
+                </span>
+              </label>
+              <select
+                value={
+                  CANONICAL_LOCAL_MODELS.some(
+                    (m) => m.tag.toLowerCase() === (formData.personal.model || '').toLowerCase()
+                  )
+                    ? CANONICAL_LOCAL_MODELS.find(
+                        (m) => m.tag.toLowerCase() === (formData.personal.model || '').toLowerCase()
+                      )!.tag
+                    : 'custom'
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val !== 'custom') {
+                    handlePersonalChange('model', val);
+                    setGlobalActiveLocalModel(val);
+                  }
+                }}
                 className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:border-amber-400 text-slate-200 text-xs font-mono focus:outline-none"
-                placeholder="llama3.1:8b"
-              />
-              <span className="text-[10px] text-slate-500 font-mono">e.g. llama3.1:8b, mistral, qwen2.5</span>
+              >
+                {CANONICAL_LOCAL_MODELS.map((m) => (
+                  <option key={m.tag} value={m.tag}>
+                    {m.name} ({m.tag})
+                  </option>
+                ))}
+                <option value="custom">Custom Tag / Other Model...</option>
+              </select>
+
+              {(!CANONICAL_LOCAL_MODELS.some(
+                (m) => m.tag.toLowerCase() === (formData.personal.model || '').toLowerCase()
+              ) || formData.personal.model === 'custom') && (
+                <input
+                  type="text"
+                  value={formData.personal.model === 'custom' ? '' : formData.personal.model}
+                  onChange={(e) => {
+                    handlePersonalChange('model', e.target.value);
+                    setGlobalActiveLocalModel(e.target.value);
+                  }}
+                  className="mt-1 bg-slate-950 border border-amber-600/50 rounded-lg px-2.5 py-1 text-amber-200 text-xs font-mono focus:outline-none"
+                  placeholder="e.g. llama3.1:8b or custom tag..."
+                />
+              )}
+              <span className="text-[10px] text-slate-400 font-mono truncate" title={resolveModelSpec(formData.personal.model).name}>
+                Canonical: {resolveModelSpec(formData.personal.model).name}
+              </span>
             </div>
 
             {/* Optional Bearer / API key */}

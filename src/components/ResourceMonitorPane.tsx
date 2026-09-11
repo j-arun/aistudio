@@ -28,7 +28,9 @@ import {
   saveResourceMonitorSettings,
   flushModelFromMemory,
   notifyModelLoaded,
-  MODEL_FOOTPRINTS,
+  CANONICAL_LOCAL_MODELS,
+  resolveModelSpec,
+  setGlobalActiveLocalModel,
 } from '../utils/resourceMonitor';
 
 interface ResourceMonitorPaneProps {
@@ -56,10 +58,7 @@ export const ResourceMonitorPane: React.FC<ResourceMonitorPaneProps> = ({
 
   if (!isOpen) return null;
 
-  const currentSpec =
-    MODEL_FOOTPRINTS[state.activeModelId] ||
-    MODEL_FOOTPRINTS['deepseek_32b'] ||
-    Object.values(MODEL_FOOTPRINTS)[0];
+  const currentSpec = resolveModelSpec(state.activeModelId);
 
   const handleManualFlush = async () => {
     setIsFlushing(true);
@@ -73,7 +72,7 @@ export const ResourceMonitorPane: React.FC<ResourceMonitorPaneProps> = ({
     if (state.modelStatus === 'loaded') {
       flushModelFromMemory({ reason: 'manual_flush' });
     } else {
-      notifyModelLoaded(state.activeModelId);
+      notifyModelLoaded(currentSpec.tag);
     }
   };
 
@@ -82,7 +81,7 @@ export const ResourceMonitorPane: React.FC<ResourceMonitorPaneProps> = ({
   };
 
   const handleModelChange = (modelId: string) => {
-    saveResourceMonitorSettings({ activeModelId: modelId });
+    setGlobalActiveLocalModel(modelId);
   };
 
   const handleAutoFlushToggle = () => {
@@ -358,12 +357,12 @@ export const ResourceMonitorPane: React.FC<ResourceMonitorPaneProps> = ({
                       Target Private Model Architecture:
                     </label>
                     <select
-                      value={state.activeModelId}
+                      value={currentSpec.tag}
                       onChange={(e) => handleModelChange(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-amber-200 text-xs font-mono"
                     >
-                      {Object.values(MODEL_FOOTPRINTS).map((spec) => (
-                        <option key={spec.id} value={spec.id}>
+                      {CANONICAL_LOCAL_MODELS.map((spec) => (
+                        <option key={spec.tag} value={spec.tag}>
                           {spec.name} (~{spec.totalActiveGb} GB)
                         </option>
                       ))}

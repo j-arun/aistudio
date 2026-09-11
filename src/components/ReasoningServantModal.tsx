@@ -3,7 +3,7 @@
 // Interactive Modal overlay with individual reasoning question cards, N/A scrubbing,
 // timeline validation, and 3-Form XML state merging.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   ShieldCheck,
@@ -20,6 +20,8 @@ import {
   FilterX,
   Cpu,
   Compass,
+  FileText,
+  RotateCw,
 } from 'lucide-react';
 import {
   ReasoningQuestion,
@@ -28,13 +30,15 @@ import {
   StructuredAstrologicalNarrative,
   PakkaAstrologicalReasoning,
   TimelineValidation,
+  runPrivateLlmReasoningAgent,
 } from '../utils/privateLlmServant';
 import {
   flushModelFromMemory,
   getResourceMonitorState,
   notifyModelLoaded,
-  MODEL_FOOTPRINTS,
-  saveResourceMonitorSettings,
+  CANONICAL_LOCAL_MODELS,
+  resolveModelSpec,
+  setGlobalActiveLocalModel,
 } from '../utils/resourceMonitor';
 
 interface ReasoningServantModalProps {
@@ -59,26 +63,39 @@ interface ReasoningServantModalProps {
 export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
   isOpen,
   onClose,
+  rawNarrative = '',
   evaluation,
   onCompleteIntake,
 }) => {
+  const [unformattedText, setUnformattedText] = useState<string>(rawNarrative || '');
+  const [activeEvaluation, setActiveEvaluation] = useState<ServantEvaluationResult>(evaluation);
   const [questions, setQuestions] = useState<ReasoningQuestion[]>(evaluation.questions);
   const [timelineInput, setTimelineInput] = useState<string>(evaluation.normalizedTimeline);
   const [customNarrative, setCustomNarrative] = useState<string>(
     evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
   );
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [monitorState, setMonitorState] = useState(getResourceMonitorState());
 
-  const supportedModels = [
-    { id: 'deepseek_32b', label: 'DeepSeek 32B' },
-    { id: 'qwen_14b', label: 'Qwen 14B' },
-    { id: 'llama_8b', label: 'Llama 8B' },
-    { id: 'qwen_32b', label: 'Qwen 32B' },
-  ];
+  // Synchronize when evaluation prop changes
+  useEffect(() => {
+    setActiveEvaluation(evaluation);
+    setQuestions(evaluation.questions);
+    setTimelineInput(evaluation.normalizedTimeline);
+    setCustomNarrative(
+      evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
+    );
+  }, [evaluation]);
+
+  useEffect(() => {
+    if (rawNarrative) {
+      setUnformattedText(rawNarrative);
+    }
+  }, [rawNarrative]);
 
   // When modal is active, the model is resident in memory for intake reasoning
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       notifyModelLoaded(monitorState.activeModelId);
       setMonitorState(getResourceMonitorState());
@@ -87,10 +104,38 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 
   if (!isOpen) return null;
 
+  const currentSpec = resolveModelSpec(monitorState.activeModelId);
+
+  const handleRunAgent = async (overrideText?: string) => {
+    const textToProcess = overrideText !== undefined ? overrideText : unformattedText;
+    setIsSynthesizing(true);
+    notifyModelLoaded(currentSpec.tag);
+    try {
+      const result = await runPrivateLlmReasoningAgent(
+        textToProcess,
+        timelineInput || '2026-09-07',
+        currentSpec.tag
+      );
+      setActiveEvaluation(result);
+      setQuestions(result.questions);
+      setTimelineInput(result.normalizedTimeline);
+      setCustomNarrative(
+        result.structuredNarrative?.synthesizedNarrative || result.compressedNarrative
+      );
+    } catch (err) {
+      console.error('Reasoning Agent execution error:', err);
+    } finally {
+      setIsSynthesizing(false);
+    }
+  };
+
   const handleModelChange = (modelId: string) => {
-    saveResourceMonitorSettings({ activeModelId: modelId });
-    notifyModelLoaded(modelId);
+    const spec = setGlobalActiveLocalModel(modelId);
+    notifyModelLoaded(spec.tag);
     setMonitorState(getResourceMonitorState());
+    if (unformattedText && unformattedText.trim().length > 0) {
+      handleRunAgent();
+    }
   };
 
   const handleTextChange = (id: string, value: string) => {
@@ -116,7 +161,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
       return q;
     });
 
-    const mergeResult = mergeServantState(evaluation, updatedQuestions);
+    const mergeResult = mergeServantState(activeEvaluation, updatedQuestions);
 
     const effectiveNarrative =
       customNarrative && customNarrative.trim().length > 0
@@ -164,14 +209,14 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-amber-200">
-                  Private LLM Reasoning Servant Intake
+                  Private LLM Reasoning Agent
                 </h2>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 border border-amber-700 text-amber-300">
                   SRS-REQ-1.3-1.4
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono mt-0.5">
-                Precision Narrative & Domain Formulation • Zero Filler Clarifications
+                Unformatted Narrative Intake • Astrological Transformation • Questions &amp; 3-Form XML Merge
               </p>
             </div>
           </div>
@@ -190,37 +235,81 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
         <div className="px-4 py-2.5 bg-slate-950/95 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
           <div className="flex items-center gap-2.5">
             <Cpu className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="text-slate-400">Servant Engine:</span>
+            <span className="text-slate-400">Reasoning Agent Engine:</span>
             <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-lg p-0.5">
-              {supportedModels.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => handleModelChange(m.id)}
-                  className={`px-2 py-1 rounded text-[10.5px] font-mono cursor-pointer transition-all ${
-                    monitorState.activeModelId === m.id
-                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                  }`}
-                  title={`${m.label}`}
-                >
-                  {m.label}
-                </button>
-              ))}
+              {CANONICAL_LOCAL_MODELS.map((m) => {
+                const isSelected = currentSpec.tag.toLowerCase() === m.tag.toLowerCase();
+                return (
+                  <button
+                    key={m.tag}
+                    type="button"
+                    onClick={() => handleModelChange(m.tag)}
+                    className={`px-2 py-1 rounded text-[10.5px] font-mono cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                    title={`${m.name} (${m.tag})`}
+                  >
+                    {m.shortLabel}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <span>Footprint: <strong className="text-amber-300">{(MODEL_FOOTPRINTS[monitorState.activeModelId] || MODEL_FOOTPRINTS['deepseek_32b']).totalActiveGb} GB</strong></span>
+            <span>Footprint: <strong className="text-amber-300">~{currentSpec.totalActiveGb} GB</strong></span>
             <span className="text-slate-600">|</span>
-            <span className="text-emerald-400">Auto-Flush: ON</span>
+            <span className="text-emerald-400 font-mono">keep_alive: 0 Auto-Flush</span>
           </div>
         </div>
 
         {/* Modal Scrollable Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+          {/* STEP 1: Unformatted Querent Text Intake */}
+          <div className="p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/40 space-y-2 shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-800/80 pb-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-bold text-amber-300 font-mono">
+                  Input: Unformatted Querent Narrative
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRunAgent()}
+                disabled={isSynthesizing}
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow"
+              >
+                {isSynthesizing ? (
+                  <RotateCw className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {isSynthesizing
+                    ? `Reasoning with ${currentSpec.shortLabel}...`
+                    : 'Call Private LLM Agent'}
+                </span>
+              </button>
+            </div>
+
+            <textarea
+              rows={2}
+              value={unformattedText}
+              onChange={(e) => setUnformattedText(e.target.value)}
+              placeholder="Enter or paste unformatted querent question, notes, or speech transcript here..."
+              className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700/80 text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-400"
+            />
+            <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+              <span>Calls private LLM ({currentSpec.name}) with unformatted text &amp; transforms into verified 3-Form XML.</span>
+              <span className="text-emerald-400">keep_alive: 0 safe</span>
+            </div>
+          </div>
+
           {/* Domain & Significator Card */}
-          {evaluation.detectedDomain && (
+          {activeEvaluation.detectedDomain && (
             <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-slate-950 to-slate-900 border border-amber-700/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="flex items-start gap-2.5">
                 <div className="p-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 shrink-0 mt-0.5">
@@ -229,21 +318,21 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-amber-200">
-                      {evaluation.detectedDomain.title}
+                      {activeEvaluation.detectedDomain.title}
                     </span>
                     <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
-                      Bhava {evaluation.detectedDomain.bhava}
+                      Bhava {activeEvaluation.detectedDomain.bhava}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-300 mt-0.5 font-sans">
-                    Significators: <strong className="text-amber-300 font-mono">{evaluation.detectedDomain.significator}</strong>
+                    Significators: <strong className="text-amber-300 font-mono">{activeEvaluation.detectedDomain.significator}</strong>
                   </p>
                 </div>
               </div>
 
               <div className="text-right sm:max-w-xs">
                 <span className="text-[10.5px] text-slate-400 italic block">
-                  {evaluation.detectedDomain.suggestedFocus}
+                  {activeEvaluation.detectedDomain.suggestedFocus}
                 </span>
               </div>
             </div>
@@ -259,7 +348,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
                 </span>
               </div>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800/60 text-amber-300">
-                {evaluation.timelineValidation?.status === 'verified_explicit' ? '✓ Verified in Query' : 'Resolved to Anchor Window'}
+                {activeEvaluation.timelineValidation?.status === 'verified_explicit' ? '✓ Verified in Query' : 'Resolved to Anchor Window'}
               </span>
             </div>
 
@@ -295,7 +384,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-400">
-              {evaluation.timelineValidation?.astrologicalChronologyNote || 'Parashari Gochara transit analysis evaluates exact planetary degree ingress windows matching your chosen YYYY-MM anchor.'}
+              {activeEvaluation.timelineValidation?.astrologicalChronologyNote || 'Parashari Gochara transit analysis evaluates exact planetary degree ingress windows matching your chosen YYYY-MM anchor.'}
             </p>
           </div>
 
@@ -304,7 +393,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
             <div className="flex items-center justify-between text-[11px] font-mono">
               <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5" />
-                Pillar 2: Private LLM Built Narrative Dossier
+                Pillar 2: Private LLM Transformed Narrative Dossier
               </span>
               <span className="text-amber-300 text-[10px]">
                 Active Astrological Synthesis
@@ -313,9 +402,9 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 
             <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed space-y-2">
               <div className="text-amber-300 font-bold border-b border-slate-800 pb-1 flex items-center justify-between">
-                <span>{evaluation.structuredNarrative?.title || evaluation.storySynopsis}</span>
+                <span>{activeEvaluation.structuredNarrative?.title || activeEvaluation.storySynopsis}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 font-normal">Synthesized by Reasoning Servant</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Synthesized by Reasoning Agent</span>
                   <button
                     type="button"
                     onClick={() => setIsEditingNarrative(!isEditingNarrative)}
@@ -341,14 +430,14 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
                 </div>
               ) : (
                 <p className="text-slate-200 text-xs font-sans">
-                  {customNarrative || evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative}
+                  {customNarrative || activeEvaluation.structuredNarrative?.synthesizedNarrative || activeEvaluation.compressedNarrative}
                 </p>
               )}
 
-              {evaluation.structuredNarrative?.formulatedQuestions && evaluation.structuredNarrative.formulatedQuestions.length > 0 && (
+              {activeEvaluation.structuredNarrative?.formulatedQuestions && activeEvaluation.structuredNarrative.formulatedQuestions.length > 0 && (
                 <div className="pt-2 border-t border-slate-800/80 space-y-1">
                   <span className="text-[10px] font-mono text-amber-400 font-semibold block">Formulated Astrological Inquiries:</span>
-                  {evaluation.structuredNarrative.formulatedQuestions.map((fq, idx) => (
+                  {activeEvaluation.structuredNarrative.formulatedQuestions.map((fq, idx) => (
                     <div key={idx} className="text-[11px] font-mono text-slate-300 pl-2 border-l border-amber-500/40">
                       • {fq}
                     </div>
@@ -359,12 +448,12 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
           </div>
 
           {/* PILLAR 3: Pakka Astrological Reasoning Framework */}
-          {evaluation.pakkaReasoning && (
+          {activeEvaluation.pakkaReasoning && (
             <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-900/50 flex flex-col gap-2.5">
               <div className="flex items-center justify-between text-[11px] font-mono">
                 <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                  Pillar 3: Pakka Astrological Reasoning & Master Directives
+                  Pillar 3: Pakka Astrological Reasoning &amp; Master Directives
                 </span>
                 <span className="text-indigo-400 text-[10px] bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800">
                   Parashara Rules Enforced
@@ -373,14 +462,14 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
                 <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block mb-0.5">Primary Bhava & Significators:</span>
-                  <span className="text-amber-300 font-bold">{evaluation.pakkaReasoning.primaryBhava.house} ({evaluation.pakkaReasoning.primaryBhava.name})</span>
-                  <p className="text-[11px] text-slate-300 mt-1 font-sans">{evaluation.pakkaReasoning.primaryBhava.justification}</p>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Primary Bhava &amp; Significators:</span>
+                  <span className="text-amber-300 font-bold">{activeEvaluation.pakkaReasoning.primaryBhava.house} ({activeEvaluation.pakkaReasoning.primaryBhava.name})</span>
+                  <p className="text-[11px] text-slate-300 mt-1 font-sans">{activeEvaluation.pakkaReasoning.primaryBhava.justification}</p>
                 </div>
                 <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
                   <span className="text-[10px] text-slate-400 block mb-0.5">Mandated Divisional Charts:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {evaluation.pakkaReasoning.mandatedVargas.map((v) => (
+                    {activeEvaluation.pakkaReasoning.mandatedVargas.map((v) => (
                       <span key={v.id} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-200 border border-slate-700">
                         {v.id}: {v.name}
                       </span>
@@ -392,7 +481,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
               <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
                 <span className="text-[10px] font-mono text-indigo-300 font-semibold block mb-1">Master LLM Directives:</span>
                 <ul className="space-y-1 text-[11px] font-mono text-slate-300 list-disc list-inside">
-                  {evaluation.pakkaReasoning.masterLlmDirectives.slice(0, 3).map((d, i) => (
+                  {activeEvaluation.pakkaReasoning.masterLlmDirectives.slice(0, 3).map((d, i) => (
                     <li key={i}>{d}</li>
                   ))}
                 </ul>
@@ -527,18 +616,18 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer with 3-Form Actions */}
+        {/* Modal Footer with 3-Form XML Actions */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/40 border-t border-amber-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-col gap-1 text-xs font-mono text-slate-400">
             <div className="flex items-center gap-2">
               <FileCheck className="w-4 h-4 text-emerald-400" />
               <span>
-                Assembling <strong className="text-amber-300">3-Form XML</strong> (Transit + Natal + Validated Narrative)
+                Assembling <strong className="text-amber-300">3-Form XML</strong> (Transit + Natal + Clarification Merge)
               </span>
             </div>
             <div className="text-[10px] text-emerald-400/90 flex items-center gap-1.5 pl-6">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Auto-Offload Active: 32B weights will purge from VRAM (keep_alive: 0) on submission</span>
+              <span>Auto-Offload Active: Local model purges from VRAM (keep_alive: 0) on merge</span>
             </div>
           </div>
 
@@ -557,7 +646,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-amber-600/40 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow"
             >
               <FileCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Compile 3-Form XML</span>
+              <span>Compile &amp; Merge 3-Form XML</span>
             </button>
 
             <button
@@ -566,7 +655,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Final Submit & Stream Master LLM</span>
+              <span>Dispatch To Public LLM (with 3-Form XML)</span>
             </button>
           </div>
         </div>

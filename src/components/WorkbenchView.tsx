@@ -1052,13 +1052,13 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                 </button>
               </div>
 
-              {/* SRS-REQ-1.3-1.4: Private LLM Reasoning Servant Intake Bar */}
+              {/* SRS-REQ-1.3-1.4: Private LLM Reasoning Agent Intake Bar */}
               <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/30 border border-amber-500/40 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md">
                 <div className="flex flex-col gap-1.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-400" />
                     <span className="text-xs font-bold text-amber-200 font-mono">
-                      Private LLM Reasoning Servant: 3-Pillar Context Engine
+                      Private LLM Reasoning Agent: 3-Pillar Context Engine
                     </span>
                     <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-950 border border-amber-800 text-amber-300">
                       SRS-REQ-1.3-1.4
@@ -1113,7 +1113,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                     className="w-full md:w-auto px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Launch Reasoning Servant Intake ("Dabbas")</span>
+                    <span>Launch Reasoning Agent</span>
                   </button>
                 </div>
               </div>
@@ -1233,7 +1233,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                           className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
-                          <span>Refine in Intake Modal ("Dabbas")</span>
+                          <span>Refine with Reasoning Agent</span>
                         </button>
 
                         <button
@@ -1418,7 +1418,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                   }`}
                 >
                   <Sparkles className="w-3 h-3 text-amber-400" />
-                  Transformed Narrative (Servant Dossier)
+                  Transformed Narrative (Reasoning Agent Dossier)
                 </button>
                 <button
                   type="button"
@@ -1521,7 +1521,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-amber-300 flex items-center gap-1">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      TRANSFORMED ASTROLOGICAL DOSSIER (Synthesized by Private LLM Reasoning Servant)
+                      TRANSFORMED ASTROLOGICAL DOSSIER (Synthesized by Private LLM Reasoning Agent)
                     </span>
                     <span className="text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded text-[9px] border border-emerald-800 font-bold">
                       Anchor: {servantOverride?.finalTimeline || outboundPayload.servantEvaluation.normalizedTimeline}
@@ -1543,7 +1543,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                       className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 flex items-center gap-1 text-[10px] cursor-pointer"
                     >
                       <Sparkles className="w-3 h-3" />
-                      Refine in Intake Modal
+                      Refine in Reasoning Agent
                     </button>
                     <button
                       type="button"
@@ -2695,7 +2695,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
         )}
       </div>
 
-      {/* Reasoning Servant Intake Modal (SRS-REQ-1.3-1.4: 3-Pillar Context Engine) */}
+      {/* Reasoning Agent Intake Modal (SRS-REQ-1.3-1.4: 3-Pillar Context Engine) */}
       <ReasoningServantModal
         isOpen={isServantModalOpen}
         onClose={() => setIsServantModalOpen(false)}
