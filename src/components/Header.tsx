@@ -152,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Quick Action for System Dropdown */}
           <div className="flex md:hidden items-center gap-1.5">
             <button
-              onClick={onOpenResourceMonitor}
+              onClick={() => onTabChange('monitor')}
               className={`p-2 rounded-lg border text-xs font-mono flex items-center gap-1 ${
                 monitorState.trafficStatus === 'green'
                   ? 'bg-slate-900 text-emerald-300 border-emerald-700/50'
@@ -160,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-amber-950/80 text-amber-300 border-amber-500/60'
                   : 'bg-red-950 text-red-200 border-red-500 animate-pulse'
               }`}
-              title="Monitoring / Optimal Headroom"
+              title="Monitoring & Observability"
             >
               <Activity className="w-3.5 h-3.5" />
             </button>
@@ -231,31 +231,19 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Configuration</span>
           </button>
 
-          {/* Menu Item 5: System (Dropdown with Monitoring & Help) */}
+          {/* Menu Item 5: System (Dropdown with Help & Specifications) */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsSystemDropdownOpen((prev) => !prev)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-                isSystemDropdownOpen || isResourceMonitorOpen
+                isSystemDropdownOpen
                   ? 'bg-slate-800 text-amber-300 border border-amber-500/50'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
               }`}
-              title="System Menu: Monitoring & Observability, SRS & Design Document"
+              title="System Menu: Help, SRS & System Design Document"
             >
               <Cpu className="w-3.5 h-3.5 text-amber-400" />
               <span>System</span>
-
-              {/* Status Indicator Dot for Headroom */}
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  monitorState.trafficStatus === 'green'
-                    ? 'bg-emerald-400'
-                    : monitorState.trafficStatus === 'yellow'
-                    ? 'bg-amber-400 animate-pulse'
-                    : 'bg-red-400 animate-bounce'
-                }`}
-              />
-
               <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isSystemDropdownOpen ? 'rotate-180 text-amber-300' : 'text-slate-400'}`} />
             </button>
 
@@ -266,45 +254,7 @@ export const Header: React.FC<HeaderProps> = ({
                   System Utilities
                 </div>
 
-                {/* Sub-item A: Monitoring / Observability (Optimal Headroom) */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setIsSystemDropdownOpen(false);
-                    onTabChange('monitor');
-                    onOpenResourceMonitor();
-                  }}
-                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-800/80 transition-colors flex items-start gap-2.5 cursor-pointer group"
-                >
-                  <div className="p-1.5 rounded-md bg-emerald-950/80 border border-emerald-700/50 text-emerald-400 group-hover:scale-105 transition-transform mt-0.5">
-                    <Activity className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-100 group-hover:text-amber-300 transition-colors">
-                        Monitoring & Observability
-                      </span>
-                      <span
-                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold ${
-                          monitorState.trafficStatus === 'green'
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                            : monitorState.trafficStatus === 'yellow'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-700'
-                            : 'bg-red-950 text-red-300 border border-red-700'
-                        }`}
-                      >
-                        {monitorState.ramUtilizationPct}% RAM
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Check optimal headroom, 32B/14B VRAM footprint, & flush model cache.
-                    </p>
-                  </div>
-                </button>
-
-                {/* Sub-item B: Help (SRS & System Design Document) */}
+                {/* Sub-item: Help (SRS & System Design Document) */}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -313,7 +263,7 @@ export const Header: React.FC<HeaderProps> = ({
                     setIsSystemDropdownOpen(false);
                     onOpenHelpDocs();
                   }}
-                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-800/80 transition-colors flex items-start gap-2.5 cursor-pointer group mt-1"
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-800/80 transition-colors flex items-start gap-2.5 cursor-pointer group"
                 >
                   <div className="p-1.5 rounded-md bg-amber-950/80 border border-amber-700/50 text-amber-400 group-hover:scale-105 transition-transform mt-0.5">
                     <FileText className="w-4 h-4" />
