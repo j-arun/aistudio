@@ -125,6 +125,8 @@ export interface ResourceMonitorState {
   baseHostRamGb: number;
   modelVramUsedGb: number;
   totalRamUsedGb: number;
+  currentAllocatedGb: number;
+  freeHeadroomGb: number;
   ramUtilizationPct: number;
   cpuUtilizationPct: number;
   activeThreads: number;
@@ -132,6 +134,7 @@ export interface ResourceMonitorState {
   trafficTitle: string;
   trafficAdvice: string;
   trafficGuidance: string;
+  actionableGuidance: string;
   autoFlushOnPromptValidation: boolean;
   flushStatusMessage: string | null;
   lastFlushedAt: string | null;
@@ -151,11 +154,13 @@ function getDetectedRam(): number {
 
 const DEFAULT_STATE: ResourceMonitorState = {
   modelStatus: 'offloaded',
-  activeModelId: '32b_q4',
+  activeModelId: 'deepseek_32b',
   systemTotalRamGb: getDetectedRam(),
   baseHostRamGb: 5.4,
   modelVramUsedGb: 0.0,
   totalRamUsedGb: 5.4,
+  currentAllocatedGb: 5.4,
+  freeHeadroomGb: Math.max(0, getDetectedRam() - 5.4),
   ramUtilizationPct: 17,
   cpuUtilizationPct: 8,
   activeThreads: 2,
@@ -164,6 +169,7 @@ const DEFAULT_STATE: ResourceMonitorState = {
   trafficAdvice:
     'Host and GPU memory utilization is healthy (<65%). You can comfortably have multi-turn conversations, ask follow-up questions, or enrich astrological narratives without danger of memory thrashing.',
   trafficGuidance: 'Safe to continue conversation and explore divisional charts.',
+  actionableGuidance: 'Safe to continue conversation and explore divisional charts.',
   autoFlushOnPromptValidation: true,
   flushStatusMessage: null,
   lastFlushedAt: null,
@@ -208,6 +214,9 @@ function recalculateMetrics(): void {
 
   const totalUsed = currentState.baseHostRamGb + currentState.modelVramUsedGb;
   currentState.totalRamUsedGb = parseFloat(totalUsed.toFixed(1));
+  currentState.currentAllocatedGb = parseFloat(totalUsed.toFixed(1));
+  const freeHeadroom = Math.max(0, currentState.systemTotalRamGb - totalUsed);
+  currentState.freeHeadroomGb = parseFloat(freeHeadroom.toFixed(1));
 
   const ramPct = Math.min(100, Math.round((totalUsed / currentState.systemTotalRamGb) * 100));
   currentState.ramUtilizationPct = ramPct;

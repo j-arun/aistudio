@@ -17,8 +17,8 @@ import {
 } from '../utils/resourceMonitor';
 
 interface HeaderProps {
-  activeTab: 'studio' | 'workbench' | 'config';
-  onTabChange: (tab: 'studio' | 'workbench' | 'config') => void;
+  activeTab: 'studio' | 'workbench' | 'monitor' | 'config';
+  onTabChange: (tab: 'studio' | 'workbench' | 'monitor' | 'config') => void;
   onOpenResourceMonitor: () => void;
   isResourceMonitorOpen: boolean;
   onOpenHelpDocs: () => void;
@@ -196,7 +196,29 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Workbench View</span>
           </button>
 
-          {/* Menu Item 3: Configuration (Replaces Configuration & Logs) */}
+          {/* Menu Item 3: Monitoring & Observability */}
+          <button
+            onClick={() => onTabChange('monitor')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'monitor'
+                ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-slate-950 font-bold shadow-md'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-amber-400" />
+            <span>Monitoring &amp; Observability</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                monitorState.trafficStatus === 'green'
+                  ? 'bg-emerald-400'
+                  : monitorState.trafficStatus === 'yellow'
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-red-400 animate-bounce'
+              }`}
+            />
+          </button>
+
+          {/* Menu Item 4: Configuration (Replaces Configuration & Logs) */}
           <button
             onClick={() => onTabChange('config')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -209,7 +231,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Configuration</span>
           </button>
 
-          {/* Menu Item 4: System (Dropdown with Monitoring & Help) */}
+          {/* Menu Item 5: System (Dropdown with Monitoring & Help) */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsSystemDropdownOpen((prev) => !prev)}
@@ -251,6 +273,7 @@ export const Header: React.FC<HeaderProps> = ({
                     e.preventDefault();
                     e.stopPropagation();
                     setIsSystemDropdownOpen(false);
+                    onTabChange('monitor');
                     onOpenResourceMonitor();
                   }}
                   className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-800/80 transition-colors flex items-start gap-2.5 cursor-pointer group"
