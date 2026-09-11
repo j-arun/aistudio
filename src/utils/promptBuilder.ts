@@ -6,7 +6,14 @@ import { DivisionalChart } from '../types';
 import { GRAHA_COORDINATES, DASHA_TIMELINE } from '../data/canonicalHoroscope';
 import { runTwoStageSanitization } from './piiSanitizer';
 import { processIntelligentPrompt, IntelligentPromptResult } from './intelligentPromptEngine';
-import { evaluateWithPrivateLlmServant, ServantEvaluationResult, ReasoningQuestion } from './privateLlmServant';
+import {
+  evaluateWithPrivateLlmServant,
+  ServantEvaluationResult,
+  ReasoningQuestion,
+  StructuredAstrologicalNarrative,
+  TimelineValidation,
+  PakkaAstrologicalReasoning,
+} from './privateLlmServant';
 import { buildThreeFormXmlPayload, ThreeFormXmlPackage } from './threeFormXmlBuilder';
 
 export interface PlanetTransitInfo {
@@ -510,6 +517,10 @@ export interface ServantContextOverride {
   clarificationAnswers?: ReasoningQuestion[];
   scrubbedNaCount?: number;
   updatedStorySynopsis?: string;
+  builtNarrative?: string;
+  updatedStructuredNarrative?: StructuredAstrologicalNarrative;
+  updatedPakkaReasoning?: PakkaAstrologicalReasoning;
+  updatedTimelineValidation?: TimelineValidation;
 }
 
 export interface OutboundPromptPayload {
@@ -605,15 +616,26 @@ export function buildBphsOutboundPrompt(
     return `      <transit planet="${t.planet}" sign="${t.transitSign}" degree="${t.degree}" nakshatra="${t.nakshatra}" pada="${t.pada}" house_from_lagna="${t.houseFromLagna}" house_from_moon="${t.houseFromMoon}" status="${t.classicalStatus}"/>`;
   }).join('\n');
 
-  // 6. Private LLM Reasoning Servant Intake Evaluation (ONLY Narrative is Tested & Validated)
+  // 6. Private LLM Reasoning Servant Intake Evaluation (Narrative Synthesized, Timeline Checked & Reasoning Formulated)
   // CRITICAL PILLARS: All Natal (D1, D9, D10), Dasha, and Gochara Transits remain 100% UNTOUCHED
   const servantEvaluation = evaluateWithPrivateLlmServant(rawNarrative, targetDateStr);
   const validatedTimeline = servantOverride?.finalTimeline || servantEvaluation.normalizedTimeline;
   const clarificationAnswers = servantOverride?.clarificationAnswers || servantEvaluation.questions;
   const scrubbedNaCount = servantOverride?.scrubbedNaCount ?? 0;
 
-  // Use the validated narrative text from the private LLM
-  const validatedNarrativeText = servantEvaluation.compressedNarrative || scrubbedNarrative;
+  const activeStructuredNarrative =
+    servantOverride?.updatedStructuredNarrative || servantEvaluation.structuredNarrative;
+  const activePakkaReasoning =
+    servantOverride?.updatedPakkaReasoning || servantEvaluation.pakkaReasoning;
+  const activeTimelineValidation =
+    servantOverride?.updatedTimelineValidation || servantEvaluation.timelineValidation;
+
+  // Use the synthesized narrative formulated by the private LLM
+  const validatedNarrativeText =
+    servantOverride?.builtNarrative ||
+    activeStructuredNarrative.synthesizedNarrative ||
+    servantEvaluation.compressedNarrative ||
+    scrubbedNarrative;
 
   // Intelligent Local Prompt Processing for Intent & Bhava Domain Mapping
   const intelligentProcessing = processIntelligentPrompt(validatedNarrativeText, periodOfInterest, targetDateStr);
@@ -700,6 +722,19 @@ ${allTransitsXml}
     <precision_story_synopsis>
       ${servantOverride?.updatedStorySynopsis || servantEvaluation.storySynopsis}
     </precision_story_synopsis>
+    <synthesized_astrological_narrative>
+      ${validatedNarrativeText}
+    </synthesized_astrological_narrative>
+    <formulated_astrological_questions count="${activeStructuredNarrative.formulatedQuestions.length}">
+${activeStructuredNarrative.formulatedQuestions.map((q, idx) => `      <question id="q_${idx + 1}">${q}</question>`).join('\n')}
+    </formulated_astrological_questions>
+    <pakka_reasoning_framework primary_bhava="${activePakkaReasoning.primaryBhava.house} (${activePakkaReasoning.primaryBhava.name})" significators="${activePakkaReasoning.primaryBhava.karakas}">
+      <justification>${activePakkaReasoning.primaryBhava.justification}</justification>
+      <mandated_vargas>${activePakkaReasoning.mandatedVargas.map((v) => `${v.id} (${v.name})`).join(', ')}</mandated_vargas>
+      <master_directives count="${activePakkaReasoning.masterLlmDirectives.length}">
+${activePakkaReasoning.masterLlmDirectives.map((d, i) => `        <directive id="${i + 1}">${d}</directive>`).join('\n')}
+      </master_directives>
+    </pakka_reasoning_framework>
     <validated_user_narrative>
       ${validatedNarrativeText}
     </validated_user_narrative>${clarificationsXml}
@@ -729,12 +764,15 @@ ${intelligentProcessing.contextualDirectives.map((d) => `      <directive>${d}</
     validatedTimeline,
     targetDateStr,
     periodLabel: periodOfInterest,
-    compressedNarrative: servantEvaluation.compressedNarrative,
+    compressedNarrative: validatedNarrativeText,
     clarificationAnswers,
     cachedDasha,
     transits: transitsForPeriod,
     divisionalCharts,
     scrubbedNaCount,
+    structuredNarrative: activeStructuredNarrative,
+    timelineValidation: activeTimelineValidation,
+    pakkaReasoning: activePakkaReasoning,
   });
 
   const threeFormXml = threeFormXmlPackage.rootXml;

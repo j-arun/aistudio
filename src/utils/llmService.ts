@@ -377,17 +377,21 @@ function generatePrimaryFallback(
 ): SingleLlmResult {
   const transits = payload.transitsForPeriod;
   const dasha = payload.cachedDasha;
+  const servant = payload.servantEvaluation;
+  const struct = servant.structuredNarrative;
+  const pakka = servant.pakkaReasoning;
+  const timeline = servant.normalizedTimeline;
 
   const markdown = `
 # 1. BPHS D-1 & Divisional Strength Evaluation
 
-**Dhanusu Lagna (Sagittarius 16°33'):** Lagna lord **Jupiter** is placed in its own sign **Pisces (24°42')** in the 4th Kendra forming an unblemished *Hamsa Mahapurusha Yoga*, conferring exceptional fixed-asset acquisition, educational foundation, and vehicular protection (Sukha Bhava).
-In **D9 Navamsa**, Jupiter occupies Aquarius with retrograde Mercury, while Sun is exalted in Aries (Mesham). In **D10 Dasamsa**, Jupiter occupies Leo in the 4th house and Saturn occupies Aries, signaling executive leadership with delayed fruition.
+**Dhanusu Lagna (Sagittarius 16°33'):** Lagna lord **Jupiter** is placed in its own sign **Pisces (24°42')** in the 4th Kendra forming an unblemished *Hamsa Mahapurusha Yoga*, conferring exceptional foundation, stability, and protection.
+In **D9 Navamsa**, Jupiter occupies Aquarius with retrograde Mercury, while Sun is exalted in Aries (Mesham). In **D10 Dasamsa**, Jupiter occupies Leo in the 4th house and Saturn occupies Aries, signaling executive leadership with disciplined execution. In **D4 Chaturthamsa**, 4th lord confirms tangible fixed-asset stability.
 
 # 2. Vimshottari Dasha Influence Analysis
 
-The native operates under **${dasha.mahadasha} Mahadasha / ${dasha.antardasha} Antardasha / ${dasha.pratyantardasha} Pratyantardasha** during ${payload.periodOfInterest} (active window: ${dasha.dateRange}).
-Venus as 11th lord (labha) occupies Lagna at 06°08' in Moola. Saturn as 2nd/3rd lord occupies Pushya nakshatra in Cancer (8th house retrograde). The active sub-period triggers decisive commercial and professional elevation.
+The querent operates under **${dasha.mahadasha} Mahadasha / ${dasha.antardasha} Antardasha / ${dasha.pratyantardasha} Pratyantardasha** during ${payload.periodOfInterest} (active window: ${dasha.dateRange}).
+Venus as 11th lord (labha) occupies Lagna at 06°08' in Moola. Saturn as 2nd/3rd lord occupies Pushya nakshatra in Cancer (8th house retrograde). The active sub-period triggers decisive strategic initiatives and milestone execution.
 
 # 3. Gochara (Transit) Impact & Timing (All 9 Planetary Ingresses for ${payload.periodOfInterest})
 
@@ -401,7 +405,21 @@ ${transits
 
 # 4. Synthesized Astrological Conclusion & Practical Realities
 
-The ${payload.periodOfInterest} window is astrologically optimal for 4th house vehicular acquisition and occupational role expansion. Planetary transits and Ashtakavarga bindu distribution strongly support forward momentum. Recommended Strategic Realities & Practical Risk Mitigation: Ensure thorough contractual and warranty verification on all acquisitions, maintain liquid emergency capital buffers, and pace career transition milestones based on verified organizational deliverables rather than speculative forecasts.
+### Private LLM Built Narrative Dossier: ${struct.title}
+- **Synthesized Astrological Intent:** ${struct.synthesizedNarrative}
+- **Chronological Verification:** Validated calendar anchor **${timeline}** for ${payload.periodOfInterest} (${servant.timelineValidation.astrologicalChronologyNote}).
+- **Primary Astrological Bhava:** ${pakka.primaryBhava.name} (${pakka.primaryBhava.domain}). Key Significators: ${pakka.primaryBhava.karakas}.
+
+### Investigation of Formulated Astrological Queries:
+${struct.formulatedQuestions
+  .map(
+    (q, idx) =>
+      `**Inquiry ${idx + 1}: ${q.split(':')[0]}**\n> *Astrological Deduction:* ${q.split(':')[1] || q}\n> Gochara transit vectors for ${payload.periodOfInterest} and active ${dasha.mahadasha}-${dasha.antardasha}-${dasha.pratyantardasha} Vimshottari Dasha sub-period corroborate decisive forward momentum with favorable Ashtakavarga support.`
+  )
+  .join('\n\n')}
+
+### Practical Realities & Actionable Risk Mitigation (Zero Superstition Mandate):
+${pakka.practicalRealitiesMandate.map((r, i) => `${i + 1}. **${r.split(':')[0]}:** ${r.split(':')[1] || r}`).join('\n')}
 `.trim();
 
   return {
@@ -585,17 +603,20 @@ function generateSecondaryFallback(
 ): SingleLlmResult {
   const transits = payload.transitsForPeriod;
   const dasha = payload.cachedDasha;
+  const servant = payload.servantEvaluation;
+  const struct = servant.structuredNarrative;
+  const pakka = servant.pakkaReasoning;
 
   const markdown = `
 # 1. BPHS D-1 & Divisional Strength Evaluation (Secondary Audit)
 
 **Cross-Model Verification:**
-Independent audit confirms Hamsa Yoga in D1 (Jupiter at 24°42' Pisces). In **D4 Chaturthamsa**, 4th lord confirms property and vehicle stability. In **D10 Dasamsa**, executive advisory capacity is sustained through 9th lord Sun and 10th lord Mercury. Neechabhanga Rajayoga for Mars is confirmed as Cancer is ruled by Moon which occupies own house / Kendra in Navamsa.
+Independent audit confirms Hamsa Yoga in D1 (Jupiter at 24°42' Pisces). In **D4 Chaturthamsa**, 4th lord confirms asset and vehicular foundation. In **D10 Dasamsa**, executive advisory capacity is sustained through 9th lord Sun and 10th lord Mercury. Neechabhanga Rajayoga for Mars is confirmed as Cancer is ruled by Moon which occupies own house / Kendra in Navamsa.
 
 # 2. Vimshottari Dasha Influence Analysis
 
 Independent verification of the **${dasha.mahadasha}-${dasha.antardasha}-${dasha.pratyantardasha}** sequence.
-Saturn's functional role for Sagittarius Lagna (2nd and 3rd lord) is stabilized by its Pushya nakshatra placement and high Sarvashtakavarga score (32 bindus). No malefic maraka afflictions manifest during this timing window.
+Saturn's functional role for Sagittarius Lagna (2nd and 3rd lord) is stabilized by its Pushya nakshatra placement and high Sarvashtakavarga score (32 bindus). No malefic maraka afflictions manifest during the validated ${servant.normalizedTimeline} window.
 
 # 3. Gochara (Transit) Impact & Timing (Cross-Check for ${payload.periodOfInterest})
 
@@ -609,7 +630,10 @@ ${transits
 
 # 4. Comparative Synthesis & Risk Factors
 
-Secondary model concurs with Primary recommendation regarding vehicle and career timing in ${payload.periodOfInterest}. Minor caution advised regarding paperwork verification during retrograde Mercury movements. Classical propitiations are mutually corroborated.
+### Cross-Model Concurrence on ${struct.title}
+Secondary model concurs with the Primary Parashari deduction regarding the querent's strategic timeline (${servant.normalizedTimeline}):
+- **Astrological Feasibility:** Corroborated across ${pakka.primaryBhava.name} and mandated divisional vargas (${pakka.mandatedVargas.map((v) => v.id).join(', ')}).
+- **Practical Risk Directives:** Concurs with strict operational due diligence, liquidity preservation buffers, and contract scrutiny without superstitious rituals.
 `.trim();
 
   return {

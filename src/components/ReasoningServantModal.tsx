@@ -25,6 +25,9 @@ import {
   ReasoningQuestion,
   ServantEvaluationResult,
   mergeServantState,
+  StructuredAstrologicalNarrative,
+  PakkaAstrologicalReasoning,
+  TimelineValidation,
 } from '../utils/privateLlmServant';
 import {
   flushModelFromMemory,
@@ -46,6 +49,10 @@ interface ReasoningServantModalProps {
     scrubbedNaCount: number;
     updatedStorySynopsis?: string;
     autoDispatch: boolean;
+    builtNarrative?: string;
+    updatedStructuredNarrative?: StructuredAstrologicalNarrative;
+    updatedPakkaReasoning?: PakkaAstrologicalReasoning;
+    updatedTimelineValidation?: TimelineValidation;
   }) => void;
 }
 
@@ -57,6 +64,10 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 }) => {
   const [questions, setQuestions] = useState<ReasoningQuestion[]>(evaluation.questions);
   const [timelineInput, setTimelineInput] = useState<string>(evaluation.normalizedTimeline);
+  const [customNarrative, setCustomNarrative] = useState<string>(
+    evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
+  );
+  const [isEditingNarrative, setIsEditingNarrative] = useState(false);
   const [monitorState, setMonitorState] = useState(getResourceMonitorState());
 
   const supportedModels = [
@@ -107,6 +118,16 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 
     const mergeResult = mergeServantState(evaluation, updatedQuestions);
 
+    const effectiveNarrative =
+      customNarrative && customNarrative.trim().length > 0
+        ? customNarrative.trim()
+        : mergeResult.mergedNarrative;
+
+    const finalStructuredNarrative: StructuredAstrologicalNarrative = {
+      ...mergeResult.updatedStructuredNarrative,
+      synthesizedNarrative: effectiveNarrative,
+    };
+
     // Auto-offload model from memory immediately upon prompt validation (keep_alive: 0)
     const monitorSettings = getResourceMonitorState();
     if (monitorSettings.autoFlushOnPromptValidation) {
@@ -114,11 +135,15 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
     }
 
     onCompleteIntake({
-      mergedNarrative: mergeResult.mergedNarrative,
+      mergedNarrative: effectiveNarrative,
       finalTimeline: mergeResult.finalTimeline || timelineInput,
       validAnswers: mergeResult.validAnswers,
       scrubbedNaCount: mergeResult.scrubbedCount,
       updatedStorySynopsis: mergeResult.updatedStorySynopsis,
+      builtNarrative: effectiveNarrative,
+      updatedStructuredNarrative: finalStructuredNarrative,
+      updatedPakkaReasoning: mergeResult.updatedPakkaReasoning,
+      updatedTimelineValidation: mergeResult.updatedTimelineValidation,
       autoDispatch,
     });
     onClose();
@@ -224,36 +249,17 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
             </div>
           )}
 
-          {/* Precision Story Formulation (Context Window Optimized) */}
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5" />
-                Precision High-Density Story Formulation (Master LLM Context)
-              </span>
-              <span className="text-amber-300 text-[10px]">
-                {evaluation.metrics.tokenCompressionRatio} • 0% repetitive 'native' jargon
-              </span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed">
-              {evaluation.storySynopsis}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Cleaned narrative: <span className="italic text-slate-300">"{evaluation.compressedNarrative}"</span>
-            </p>
-          </div>
-
-          {/* Master Timeline Validation Card */}
+          {/* PILLAR 1: Master Timeline Chronological Validation */}
           <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-600/40 flex flex-col gap-2.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-amber-400" />
                 <span className="text-xs font-bold text-amber-300 font-mono">
-                  Pillar 1: Timeline Chronological Anchor (YYYY-MM)
+                  Pillar 1: Chronological Verification & Anchor (YYYY-MM)
                 </span>
               </div>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800/60 text-amber-300">
-                Mandatory for Gochara & Pratyantardasha
+                {evaluation.timelineValidation?.status === 'verified_explicit' ? '✓ Verified in Query' : 'Resolved to Anchor Window'}
               </span>
             </div>
 
@@ -289,9 +295,110 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-400">
-              Parashari Gochara transit analysis evaluates exact planetary degree ingress windows matching your chosen YYYY-MM anchor.
+              {evaluation.timelineValidation?.astrologicalChronologyNote || 'Parashari Gochara transit analysis evaluates exact planetary degree ingress windows matching your chosen YYYY-MM anchor.'}
             </p>
           </div>
+
+          {/* PILLAR 2: Built Narrative & Formulated Astrological Queries */}
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/30 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5" />
+                Pillar 2: Private LLM Built Narrative Dossier
+              </span>
+              <span className="text-amber-300 text-[10px]">
+                Active Astrological Synthesis
+              </span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed space-y-2">
+              <div className="text-amber-300 font-bold border-b border-slate-800 pb-1 flex items-center justify-between">
+                <span>{evaluation.structuredNarrative?.title || evaluation.storySynopsis}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400 font-normal">Synthesized by Reasoning Servant</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingNarrative(!isEditingNarrative)}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[10px] cursor-pointer"
+                  >
+                    {isEditingNarrative ? 'Done Editing' : '✎ Edit Text'}
+                  </button>
+                </div>
+              </div>
+
+              {isEditingNarrative ? (
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[10px] font-mono text-amber-400 font-semibold block">
+                    Custom Astrological Narrative (Overrides Auto-Synthesis):
+                  </span>
+                  <textarea
+                    rows={3}
+                    value={customNarrative}
+                    onChange={(e) => setCustomNarrative(e.target.value)}
+                    className="w-full p-2 rounded-lg bg-slate-950 border border-amber-500/50 text-xs text-amber-100 font-sans focus:outline-none focus:ring-1 focus:ring-amber-400"
+                    placeholder="Refine or tweak the synthesized narrative that will be sent to the Public LLM..."
+                  />
+                </div>
+              ) : (
+                <p className="text-slate-200 text-xs font-sans">
+                  {customNarrative || evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative}
+                </p>
+              )}
+
+              {evaluation.structuredNarrative?.formulatedQuestions && evaluation.structuredNarrative.formulatedQuestions.length > 0 && (
+                <div className="pt-2 border-t border-slate-800/80 space-y-1">
+                  <span className="text-[10px] font-mono text-amber-400 font-semibold block">Formulated Astrological Inquiries:</span>
+                  {evaluation.structuredNarrative.formulatedQuestions.map((fq, idx) => (
+                    <div key={idx} className="text-[11px] font-mono text-slate-300 pl-2 border-l border-amber-500/40">
+                      • {fq}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* PILLAR 3: Pakka Astrological Reasoning Framework */}
+          {evaluation.pakkaReasoning && (
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-indigo-900/50 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                  Pillar 3: Pakka Astrological Reasoning & Master Directives
+                </span>
+                <span className="text-indigo-400 text-[10px] bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800">
+                  Parashara Rules Enforced
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Primary Bhava & Significators:</span>
+                  <span className="text-amber-300 font-bold">{evaluation.pakkaReasoning.primaryBhava.house} ({evaluation.pakkaReasoning.primaryBhava.name})</span>
+                  <p className="text-[11px] text-slate-300 mt-1 font-sans">{evaluation.pakkaReasoning.primaryBhava.justification}</p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Mandated Divisional Charts:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {evaluation.pakkaReasoning.mandatedVargas.map((v) => (
+                      <span key={v.id} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-200 border border-slate-700">
+                        {v.id}: {v.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
+                <span className="text-[10px] font-mono text-indigo-300 font-semibold block mb-1">Master LLM Directives:</span>
+                <ul className="space-y-1 text-[11px] font-mono text-slate-300 list-disc list-inside">
+                  {evaluation.pakkaReasoning.masterLlmDirectives.slice(0, 3).map((d, i) => (
+                    <li key={i}>{d}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
           {/* TARGETED QUESTION BOXES ("DABBAS") */}
           <div className="space-y-3">
