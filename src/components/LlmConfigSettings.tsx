@@ -81,9 +81,10 @@ export const LlmConfigSettings: React.FC<LlmConfigSettingsProps> = ({
 
   // Handlers for Personal LLM
   const handlePersonalChange = (field: string, value: any) => {
+    const normalizedValue = field === 'model' ? 'qwen2.5:14b' : value;
     setFormData((prev) => ({
       ...prev,
-      personal: { ...prev.personal, [field]: value },
+      personal: { ...prev.personal, [field]: normalizedValue },
     }));
   };
 

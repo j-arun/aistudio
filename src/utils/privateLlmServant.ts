@@ -88,6 +88,10 @@ export interface PakkaAstrologicalReasoning {
 }
 
 export interface ServantEvaluationResult {
+  privateLlmSucceeded?: boolean;
+  privateLlmPrompt?: string;
+  privateLlmResponse?: string;
+  privateLlmError?: string;
   hasGaps: boolean;
   timelineValid: boolean;
   detectedTimeline?: string;
@@ -1172,49 +1176,108 @@ export function mergeServantState(
 export async function runPrivateLlmReasoningAgent(
   rawInput: string,
   targetDate: string = '2026-09-07',
-  modelTag?: string
+  modelTag?: string,
+  endpoint?: string
 ): Promise<ServantEvaluationResult> {
   const monitor = getResourceMonitorState();
-  const activeTag = modelTag || monitor.activeModelId || 'deepseek-r1:32b';
+  const activeTag = modelTag || 'qwen2.5:14b';
   notifyModelLoaded(activeTag);
 
   let transformedByOllama: string | null = null;
-  const cleanEndpoint = (monitor.ollamaEndpoint || 'http://localhost:11434')
+  let privateLlmResponse = '';
+  let privateLlmError = '';
+  const cleanEndpoint = (endpoint || monitor.ollamaEndpoint || 'http://localhost:11434')
     .replace(/\/+$/, '')
     .replace(/\/v1\/?$/, '');
+  const sanitizedInput = runTwoStageSanitization(rawInput).stage2Llama8BScrubbed;
+  const privateLlmPrompt = `You are a Private Narrative Transformation Agent for a Public LLM.
+
+Your task is to transform the user's unformatted narrative into one clear, factual narrative that a Public LLM can analyze.
+
+This is a text-rewriting task, not a request for personal advice. You must process the narrative even when it mentions career decisions, job searches, finances, vehicles, relocation, health, or relationships. Do not refuse, moralize, or say that you cannot help. Do not make the decision for the user; only restate the user's situation and requested analysis scope.
+
+Rules:
+- Do not answer the astrology.
+- Do not produce a long dossier or a list of generic questions.
+- Preserve the user's actual intent, events, locations, and stated timelines.
+- Do not invent dates, planetary positions, yogas, outcomes, or personal facts.
+- Keep redacted values redacted. Never restore private identifiers.
+- Remove greetings, repetition, filler, and vague wording.
+- Combine related events into one coherent narrative.
+- Ask clarification questions only when essential information is missing.
+- Include no more than 3 clarification questions.
+- Do not recommend remedies, gemstones, rituals, pujas, or mantras.
+
+Return exactly this format:
+
+TRANSFORMED NARRATIVE:
+Write one complete paragraph describing what the user is planning or concerned about, the relevant life domains, the specific events, the stated timeline, and what the Public LLM must analyze.
+
+CLARIFICATION QUESTIONS:
+List only essential questions that cannot be answered from the narrative. If none are required, write NONE.
+
+UNFORMATTED USER NARRATIVE (PII-SANITIZED):
+"${sanitizedInput}"
+
+The transformed narrative is the primary output. Do not return only questions.`;
 
   if (rawInput && rawInput.trim().length > 0) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
       const response = await fetch(`${cleanEndpoint}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: activeTag,
-          prompt: `You are an expert Vedic Astrological Reasoning Agent. Transform this unformatted querent narrative into an articulate, structured astrological enquiry dossier without filler words, identifying the primary life domain (Career, Relationship, Wealth, Health), strategic YYYY-MM timeline, and key astrological questions:\n\n"${rawInput}"\n\nProvide the synthesized astrological narrative directly:`,
+            prompt: privateLlmPrompt,
           stream: false,
           keep_alive: 0,
         }),
-        signal: controller.signal,
       });
-      clearTimeout(timeoutId);
+
+      console.info('[Private LLM] Qwen response received', {
+        model: activeTag,
+        endpoint: `${cleanEndpoint}/api/generate`,
+        status: response.status,
+        ok: response.ok,
+      });
 
       if (response.ok) {
         const data = await response.json();
+        privateLlmResponse = typeof data.response === 'string' ? data.response.trim() : '';
         if (data.response && data.response.trim().length > 15) {
           transformedByOllama = data.response.trim();
+        } else {
+          privateLlmError = 'Private LLM returned an empty or too-short response.';
         }
+      } else {
+        const errorText = await response.text();
+        privateLlmError = `HTTP ${response.status}: ${errorText.slice(0, 500)}`;
+        console.error('[Private LLM] Qwen request failed:', {
+          model: activeTag,
+          endpoint: `${cleanEndpoint}/api/generate`,
+          status: response.status,
+          error: errorText,
+        });
       }
-    } catch {
+    } catch (error) {
+      console.error('[Private LLM] Qwen request unavailable; using local fallback:', {
+        model: activeTag,
+        endpoint: `${cleanEndpoint}/api/generate`,
+        error,
+      });
+      privateLlmError = error instanceof Error ? error.message : 'Private LLM request failed.';
       // Gracefully fall back to local rule-based Vedic parser
     }
   }
 
   const baseResult = evaluateWithPrivateLlmServant(rawInput, targetDate);
   if (transformedByOllama) {
+    console.info('[Private LLM] Workbench will use the Qwen narrative instead of local fallback.');
     return {
       ...baseResult,
+      privateLlmSucceeded: true,
+      privateLlmPrompt,
+      privateLlmResponse,
       compressedNarrative: transformedByOllama,
       structuredNarrative: {
         ...baseResult.structuredNarrative,
@@ -1222,6 +1285,13 @@ export async function runPrivateLlmReasoningAgent(
       },
     };
   }
-  return baseResult;
+  console.warn('[Private LLM] Workbench is using the local rule-based narrative fallback.');
+  return {
+    ...baseResult,
+    privateLlmSucceeded: false,
+    privateLlmPrompt,
+    privateLlmResponse,
+    privateLlmError: privateLlmError || 'Private LLM response was not available; local fallback was used.',
+  };
 }
 

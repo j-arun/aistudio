@@ -59,6 +59,7 @@ import {
   StructuredAstrologicalNarrative,
   PakkaAstrologicalReasoning,
   TimelineValidation,
+  ServantEvaluationResult,
 } from '../utils/privateLlmServant';
 import { ReasoningServantModal } from './ReasoningServantModal';
 import { LlmConfigSettings } from './LlmConfigSettings';
@@ -163,6 +164,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
 
   // Private LLM Reasoning Servant States (SRS-REQ-1.3-1.4)
   const [servantOverride, setServantOverride] = useState<ServantContextOverride | null>(null);
+  const [privateEvaluation, setPrivateEvaluation] = useState<ServantEvaluationResult | null>(null);
+  const [privateNarrativeDraft, setPrivateNarrativeDraft] = useState('');
   const [isServantModalOpen, setIsServantModalOpen] = useState(false);
   const [isTransformedNarrativeOpen, setIsTransformedNarrativeOpen] = useState(true);
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
@@ -197,6 +200,44 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
     setIsZone3Open(false);
   };
 
+  const handlePrivateEvaluationChange = (evaluation: ServantEvaluationResult) => {
+    if (evaluation.privateLlmSucceeded) {
+      setPrivateEvaluation(evaluation);
+      setPrivateNarrativeDraft(
+        evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
+      );
+    }
+  };
+
+  const handlePrivateNarrativeChange = (value: string) => {
+    setPrivateNarrativeDraft(value);
+    setPrivateEvaluation((current) =>
+      current
+        ? {
+            ...current,
+            compressedNarrative: value,
+            structuredNarrative: {
+              ...current.structuredNarrative,
+              synthesizedNarrative: value,
+            },
+          }
+        : current
+    );
+  };
+
+  const handlePrivateQuestionChange = (questionId: string, value: string) => {
+    setPrivateEvaluation((current) =>
+      current
+        ? {
+            ...current,
+            questions: current.questions.map((question) =>
+              question.id === questionId ? { ...question, responseValue: value } : question
+            ),
+          }
+        : current
+    );
+  };
+
   // Build the complete Outbound Prompt strictly for the Period of Interest, User-Fed Transits, and Servant Override
   const outboundPayload: OutboundPromptPayload = useMemo(() => {
     return buildBphsOutboundPrompt(
@@ -205,9 +246,15 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
       narrativeInput,
       divisionalCharts,
       transits,
-      servantOverride || undefined
+      servantOverride || undefined,
+      privateEvaluation || undefined
     );
-  }, [periodLabel, targetDate, narrativeInput, divisionalCharts, transits, servantOverride]);
+  }, [periodLabel, targetDate, narrativeInput, divisionalCharts, transits, servantOverride, privateEvaluation]);
+
+  React.useEffect(() => {
+    setPrivateEvaluation(null);
+    setPrivateNarrativeDraft('');
+  }, [narrativeInput, targetDate]);
 
   const handleSelectPresetPeriod = (preset: PresetPeriod) => {
     setPeriodLabel(preset.label);
@@ -393,30 +440,58 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const handleSimulateDispatch = async (overrideSettings?: InjectedLlmSettings, bypassGaps: boolean = false) => {
-    // If narrative has gaps and servant has not been audited yet, trigger the Reasoning Servant modal
-    if (!bypassGaps && outboundPayload.servantEvaluation.hasGaps && !servantOverride) {
-      setIsServantModalOpen(true);
-      return;
-    }
-
+  const handleSimulateDispatch = async (
+    overrideSettings?: InjectedLlmSettings,
+    bypassGaps: boolean = false,
+    servantOverrideOverride?: ServantContextOverride
+  ) => {
     setIsSimulating(true);
     setStreamingStatus('Private LLM Reasoning Servant: Preparing 3-Form XML Payload...');
     try {
       const activeSettings = overrideSettings || llmSettings;
-      const result = await dispatchMultiLlmStreaming(outboundPayload, activeSettings, {
+      const activePrivateEvaluation = privateEvaluation;
+      const activeServantOverride = servantOverrideOverride || servantOverride;
+
+      const preparedPayload = activePrivateEvaluation
+        ? buildBphsOutboundPrompt(
+            periodLabel,
+            targetDate,
+            narrativeInput,
+            divisionalCharts,
+            transits,
+            activeServantOverride || undefined,
+            activePrivateEvaluation
+          )
+        : outboundPayload;
+
+      console.info('[Workbench] Outbound narrative selected:', {
+        model: activePrivateEvaluation ? 'qwen2.5:14b' : 'local-fallback',
+        narrative: preparedPayload.servantEvaluation.structuredNarrative.synthesizedNarrative,
+      });
+
+      // If narrative has gaps and servant has not been audited yet, trigger clarification after Qwen evaluation.
+      if (!bypassGaps && preparedPayload.servantEvaluation.hasGaps && !activeServantOverride) {
+        setIsServantModalOpen(true);
+        return;
+      }
+
+      const result = await dispatchMultiLlmStreaming(preparedPayload, activeSettings, {
         onStatusUpdate: (status) => setStreamingStatus(status),
         onPrimaryChunk: (_chunk, acc) => setLiveStreamingText(acc),
       });
       setDispatchResult(result);
       setIsZone3Open(true);
     } catch (err) {
-      console.error('Multi-LLM dispatch error:', err);
+      console.error('[Workbench] Multi-LLM dispatch error:', err);
     } finally {
       setIsSimulating(false);
       setStreamingStatus(null);
       setLiveStreamingText(null);
     }
+  };
+
+  const handleLaunchReasoningAgent = () => {
+    setIsServantModalOpen(true);
   };
 
   const handleCompleteServantIntake = (mergedData: {
@@ -431,7 +506,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
     updatedPakkaReasoning?: PakkaAstrologicalReasoning;
     updatedTimelineValidation?: TimelineValidation;
   }) => {
-    setServantOverride({
+    const completedServantOverride: ServantContextOverride = {
       finalTimeline: mergedData.finalTimeline,
       clarificationAnswers: mergedData.validAnswers,
       scrubbedNaCount: mergedData.scrubbedNaCount,
@@ -440,7 +515,9 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
       updatedStructuredNarrative: mergedData.updatedStructuredNarrative,
       updatedPakkaReasoning: mergedData.updatedPakkaReasoning,
       updatedTimelineValidation: mergedData.updatedTimelineValidation,
-    });
+    };
+    setServantOverride(completedServantOverride);
+    setPrivateNarrativeDraft(mergedData.builtNarrative || mergedData.mergedNarrative);
     setSpeechStatus(
       `Reasoning Servant built narrative & verified Pakka Reasoning (${mergedData.finalTimeline}). ${mergedData.scrubbedNaCount} N/A fields eliminated.`
     );
@@ -448,7 +525,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
     if (mergedData.autoDispatch) {
       // Direct streaming dispatch with verified context
       setTimeout(() => {
-        handleSimulateDispatch(undefined, true);
+        handleSimulateDispatch(undefined, true, completedServantOverride);
       }, 100);
     }
   };
@@ -506,6 +583,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({ onOpenResourceMoni
     }
     setTimeout(() => setExportNotice(null), 3000);
   };
+
+  const hasPrivateLlmResponse = Boolean(privateEvaluation || servantOverride);
 
   const defaultPrimaryReportMarkdown = useMemo(() => {
     const transitLines = outboundPayload.transitsForPeriod
@@ -959,7 +1038,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-slate-300 text-xs font-mono font-semibold flex items-center gap-2">
-                  <span>Narrative Input Canvas (Spoken Audio or Typed Text):</span>
+                  <span>Narrative:</span>
                   {isListening && (
                     <span className="flex items-center gap-1.5 text-[10px] text-red-400 bg-red-950/80 border border-red-800/60 px-2 py-0.5 rounded-full animate-pulse">
                       <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
@@ -968,33 +1047,10 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                   )}
                 </label>
 
-                {/* Microphone Toggle Button */}
-                <button
-                  type="button"
-                  onClick={toggleSpeechRecognition}
-                  className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
-                    isListening
-                      ? 'bg-red-600 text-white animate-pulse ring-2 ring-red-400/50'
-                      : 'bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-800/50'
-                  }`}
-                  title={isListening ? 'Click to stop recording' : 'Click to speak astrological context'}
-                >
-                  {isListening ? (
-                    <>
-                      <MicOff className="w-3.5 h-3.5 text-white" />
-                      <span>Stop Listening</span>
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Record Voice Note</span>
-                    </>
-                  )}
-                </button>
               </div>
 
               <textarea
-                rows={3}
+                rows={6}
                 value={narrativeInput}
                 onChange={(e) => setNarrativeInput(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-amber-900/50 text-slate-200 text-xs focus:outline-none focus:border-amber-400 leading-relaxed font-sans"
@@ -1014,103 +1070,19 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                 </div>
               )}
 
-              {/* Speech Voice Note Simulation Presets with PII for testing */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] font-mono">
-                <span className="text-slate-400 text-[10px]">Test Spoken Audio Presets (with PII):</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleApplyPresetSpeech(
-                      'My brother Ramesh and I are buying a car TN-10-AZ-1038 in mid-2026. Living in T. Nagar, Chennai, India. Transferred from A/C 40591039821, contact me at +91 98765 43210.'
-                    )
-                  }
-                  className="px-2 py-0.5 rounded bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-800 text-[10px] transition-colors cursor-pointer"
-                >
-                  Vehicle TN-10 & Sibling
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleApplyPresetSpeech(
-                      'Born on 14th August 1985 in Chennai, looking for career promotion from my company in Bangalore in 2026 during Saturn transit in Aquarius.'
-                    )
-                  }
-                  className="px-2 py-0.5 rounded bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-800 text-[10px] transition-colors cursor-pointer"
-                >
-                  DOB & Career Relocation
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleApplyPresetSpeech(
-                      'Evaluating commercial real estate purchase and business partnership with Priya during 2026 Jupiter transit in Gemini.'
-                    )
-                  }
-                  className="px-2 py-0.5 rounded bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-800 text-[10px] transition-colors cursor-pointer"
-                >
-                  Real Estate & Partnership
-                </button>
-              </div>
-
-              {/* SRS-REQ-1.3-1.4: Private LLM Reasoning Agent Intake Bar */}
-              <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/30 border border-amber-500/40 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
+              {/* Private LLM Reasoning Agent */}
+              <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/30 border border-amber-500/40 flex flex-col gap-3 shadow-md">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-400" />
                     <span className="text-xs font-bold text-amber-200 font-mono">
-                      Private LLM Reasoning Agent: 3-Pillar Context Engine
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-950 border border-amber-800 text-amber-300">
-                      SRS-REQ-1.3-1.4
-                    </span>
-                    {servantOverride ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-300 flex items-center gap-1 font-bold">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Verified & Merged ({servantOverride.finalTimeline})
-                      </span>
-                    ) : outboundPayload.servantEvaluation.hasGaps ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950/90 border border-amber-600 text-amber-300 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-amber-400" />
-                        {outboundPayload.servantEvaluation.questions.length} Gaps Found
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-300 flex items-center gap-1">
-                        <Check className="w-3 h-3" />
-                        Context Ready
-                      </span>
-                    )}
-                  </div>
-
-                  {/* The 3 Pillars Indicator */}
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
-                    <span
-                      className={`px-2 py-0.5 rounded border flex items-center gap-1 ${
-                        outboundPayload.servantEvaluation.timelineValid
-                          ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300'
-                          : 'bg-amber-950/60 border-amber-800/60 text-amber-300'
-                      }`}
-                    >
-                      <Calendar className="w-3 h-3" />
-                      Pillar 1 Timeline: {outboundPayload.servantEvaluation.normalizedTimeline}
-                    </span>
-
-                    <span className="px-2 py-0.5 rounded border bg-slate-900 border-slate-700 text-slate-300 flex items-center gap-1">
-                      <HelpCircle className="w-3 h-3 text-amber-400" />
-                      Pillar 2 Fullness: {outboundPayload.servantEvaluation.questions.length} Clarifications
-                    </span>
-
-                    <span className="px-2 py-0.5 rounded border bg-slate-900 border-slate-700 text-slate-300 flex items-center gap-1">
-                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                      Pillar 3 Efficiency: {outboundPayload.servantEvaluation.metrics.tokenCompressionRatio} compressed
+                      Private LLM Reasoning Agent:
                     </span>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setIsServantModalOpen(true)}
-                    className="w-full md:w-auto px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
+                    onClick={handleLaunchReasoningAgent}
+                    className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Launch Reasoning Agent</span>
@@ -1523,12 +1495,16 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                       TRANSFORMED ASTROLOGICAL DOSSIER (Synthesized by Private LLM Reasoning Agent)
                     </span>
-                    <span className="text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded text-[9px] border border-emerald-800 font-bold">
-                      Anchor: {servantOverride?.finalTimeline || outboundPayload.servantEvaluation.normalizedTimeline}
-                    </span>
-                    <span className="text-amber-300 bg-amber-950 px-2 py-0.5 rounded text-[9px] border border-amber-800">
-                      Compression: {outboundPayload.servantEvaluation.metrics.tokenCompressionRatio}
-                    </span>
+                    {hasPrivateLlmResponse && (
+                      <>
+                        <span className="text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded text-[9px] border border-emerald-800 font-bold">
+                          Anchor: {servantOverride?.finalTimeline || privateEvaluation?.normalizedTimeline}
+                        </span>
+                        <span className="text-amber-300 bg-amber-950 px-2 py-0.5 rounded text-[9px] border border-amber-800">
+                          Compression: {privateEvaluation?.metrics.tokenCompressionRatio}
+                        </span>
+                      </>
+                    )}
                     {servantOverride?.builtNarrative && (
                       <span className="text-indigo-300 bg-indigo-950 px-2 py-0.5 rounded text-[9px] border border-indigo-800">
                         Customized &amp; Verified
@@ -1565,6 +1541,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                   </div>
                 </div>
 
+                {!hasPrivateLlmResponse ? null : <>
                 {/* Section 1: Synthesized Dossier */}
                 <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-2">
                   <div className="text-amber-300 font-bold text-xs border-b border-slate-800 pb-1 flex items-center justify-between">
@@ -1575,23 +1552,27 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                     </span>
                     <span className="text-[10px] text-slate-400 font-normal">Synthesized by Private LLM</span>
                   </div>
-                  <p className="text-slate-200 text-xs font-sans leading-relaxed">
-                    {servantOverride?.builtNarrative ||
-                      outboundPayload.servantEvaluation.structuredNarrative?.synthesizedNarrative ||
-                      outboundPayload.servantEvaluation.compressedNarrative}
-                  </p>
+                  <textarea
+                    value={
+                      privateNarrativeDraft ||
+                      servantOverride?.builtNarrative ||
+                      privateEvaluation?.structuredNarrative?.synthesizedNarrative ||
+                      ''
+                    }
+                    onChange={(event) => handlePrivateNarrativeChange(event.target.value)}
+                    rows={7}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-slate-200 text-xs font-sans leading-relaxed resize-y focus:outline-none focus:border-amber-400"
+                    aria-label="Private LLM transformed narrative"
+                  />
 
                   {/* Section 2: Formulated Questions */}
-                  {((servantOverride?.updatedStructuredNarrative?.formulatedQuestions ||
-                    outboundPayload.servantEvaluation.structuredNarrative?.formulatedQuestions) ?? []).length > 0 && (
+                  {(privateEvaluation?.structuredNarrative?.formulatedQuestions || []).length > 0 && (
                     <div className="pt-2 border-t border-slate-800/80 space-y-1">
                       <span className="text-[10px] font-mono text-amber-400 font-semibold block">
                         Formulated Astrological Inquiries (Scope for Public LLM):
                       </span>
                       {(
-                        servantOverride?.updatedStructuredNarrative?.formulatedQuestions ||
-                        outboundPayload.servantEvaluation.structuredNarrative?.formulatedQuestions ||
-                        []
+                        privateEvaluation?.structuredNarrative?.formulatedQuestions || []
                       ).map((q, idx) => (
                         <div key={idx} className="text-[11px] font-mono text-slate-300 pl-2 border-l border-amber-500/40">
                           • {q}
@@ -1599,32 +1580,52 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                       ))}
                     </div>
                   )}
+
+                  {privateEvaluation?.questions.length > 0 && (
+                    <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                      <span className="text-[10px] font-mono text-amber-400 font-semibold block">
+                        Clarification Questions:
+                      </span>
+                      {privateEvaluation.questions.map((question) => (
+                        <div key={question.id} className="space-y-1">
+                          <label className="text-[11px] text-slate-300 font-sans block">
+                            {question.title}
+                          </label>
+                          <input
+                            type="text"
+                            value={question.responseValue}
+                            onChange={(event) => handlePrivateQuestionChange(question.id, event.target.value)}
+                            className="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-slate-200 text-[11px] font-sans focus:outline-none focus:border-amber-400"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Section 3: Pakka Astrological Reasoning Framework */}
-                {(servantOverride?.updatedPakkaReasoning ||
-                  outboundPayload.servantEvaluation.pakkaReasoning) && (
+                {(servantOverride?.updatedPakkaReasoning || privateEvaluation?.pakkaReasoning) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                     <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
                       <span className="text-[10px] text-slate-400 block mb-0.5">Primary Bhava &amp; Significators:</span>
                       <span className="text-amber-300 font-bold">
-                        {(servantOverride?.updatedPakkaReasoning || outboundPayload.servantEvaluation.pakkaReasoning).primaryBhava.house} ({(servantOverride?.updatedPakkaReasoning || outboundPayload.servantEvaluation.pakkaReasoning).primaryBhava.name})
+                        {(servantOverride?.updatedPakkaReasoning || privateEvaluation?.pakkaReasoning).primaryBhava.house} ({(servantOverride?.updatedPakkaReasoning || privateEvaluation?.pakkaReasoning).primaryBhava.name})
                       </span>
                       <p className="text-[11px] text-slate-300 mt-1 font-sans">
-                        {(servantOverride?.updatedPakkaReasoning || outboundPayload.servantEvaluation.pakkaReasoning).primaryBhava.justification}
+                        {(servantOverride?.updatedPakkaReasoning || privateEvaluation?.pakkaReasoning).primaryBhava.justification}
                       </p>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
                       <span className="text-[10px] text-slate-400 block mb-0.5">Mandated Divisional Charts:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {(servantOverride?.updatedPakkaReasoning || outboundPayload.servantEvaluation.pakkaReasoning).mandatedVargas.map((v) => (
+                            {(servantOverride?.updatedPakkaReasoning || privateEvaluation?.pakkaReasoning).mandatedVargas.map((v) => (
                           <span key={v.id} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-200 border border-slate-700">
                             {v.id}: {v.name}
                           </span>
                         ))}
                       </div>
                       <span className="text-[10px] text-slate-400 block mt-1.5">
-                        Chronology Anchor: {servantOverride?.finalTimeline || outboundPayload.servantEvaluation.normalizedTimeline}
+                        Chronology Anchor: {servantOverride?.finalTimeline || privateEvaluation?.normalizedTimeline}
                       </span>
                     </div>
                   </div>
@@ -1639,6 +1640,7 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
                     {outboundPayload.threeFormXmlPackage.form3Xml}
                   </pre>
                 </div>
+                </>}
               </div>
             )}
 
@@ -2700,7 +2702,10 @@ Planetary transit vectors confirm supportive houses from Janma Rasi (Moon in Gem
         isOpen={isServantModalOpen}
         onClose={() => setIsServantModalOpen(false)}
         rawNarrative={narrativeInput}
-        evaluation={outboundPayload.servantEvaluation}
+        evaluation={privateEvaluation || outboundPayload.servantEvaluation}
+        privateLlmModel="qwen2.5:14b"
+        privateLlmEndpoint={llmSettings.personal.url}
+        onEvaluationChange={handlePrivateEvaluationChange}
         onCompleteIntake={handleCompleteServantIntake}
       />
     </div>

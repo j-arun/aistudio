@@ -46,6 +46,9 @@ interface ReasoningServantModalProps {
   onClose: () => void;
   rawNarrative?: string;
   evaluation: ServantEvaluationResult;
+  privateLlmModel?: string;
+  privateLlmEndpoint?: string;
+  onEvaluationChange?: (evaluation: ServantEvaluationResult) => void;
   onCompleteIntake: (mergedData: {
     mergedNarrative: string;
     finalTimeline: string;
@@ -65,6 +68,9 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
   onClose,
   rawNarrative = '',
   evaluation,
+  privateLlmModel = 'qwen2.5:14b',
+  privateLlmEndpoint,
+  onEvaluationChange,
   onCompleteIntake,
 }) => {
   const [unformattedText, setUnformattedText] = useState<string>(rawNarrative || '');
@@ -72,7 +78,9 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
   const [questions, setQuestions] = useState<ReasoningQuestion[]>(evaluation.questions);
   const [timelineInput, setTimelineInput] = useState<string>(evaluation.normalizedTimeline);
   const [customNarrative, setCustomNarrative] = useState<string>(
-    evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
+    evaluation.privateLlmSucceeded
+      ? evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
+      : ''
   );
   const [isEditingNarrative, setIsEditingNarrative] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
@@ -84,7 +92,9 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
     setQuestions(evaluation.questions);
     setTimelineInput(evaluation.normalizedTimeline);
     setCustomNarrative(
-      evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
+      evaluation.privateLlmSucceeded
+        ? evaluation.structuredNarrative?.synthesizedNarrative || evaluation.compressedNarrative
+        : ''
     );
   }, [evaluation]);
 
@@ -104,7 +114,8 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentSpec = resolveModelSpec(monitorState.activeModelId);
+  const currentSpec = resolveModelSpec(privateLlmModel);
+  const hasPrivateLlmResponse = activeEvaluation.privateLlmSucceeded === true;
 
   const handleRunAgent = async (overrideText?: string) => {
     const textToProcess = overrideText !== undefined ? overrideText : unformattedText;
@@ -114,9 +125,11 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
       const result = await runPrivateLlmReasoningAgent(
         textToProcess,
         timelineInput || '2026-09-07',
-        currentSpec.tag
+        currentSpec.tag,
+        privateLlmEndpoint
       );
       setActiveEvaluation(result);
+      onEvaluationChange?.(result);
       setQuestions(result.questions);
       setTimelineInput(result.normalizedTimeline);
       setCustomNarrative(
@@ -133,9 +146,6 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
     const spec = setGlobalActiveLocalModel(modelId);
     notifyModelLoaded(spec.tag);
     setMonitorState(getResourceMonitorState());
-    if (unformattedText && unformattedText.trim().length > 0) {
-      handleRunAgent();
-    }
   };
 
   const handleTextChange = (id: string, value: string) => {
@@ -308,6 +318,31 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
             </div>
           </div>
 
+          {(activeEvaluation.privateLlmPrompt || activeEvaluation.privateLlmResponse || activeEvaluation.privateLlmError) && (
+            <details className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-700/80 text-[10px] font-mono">
+              <summary className="cursor-pointer text-amber-300 font-semibold">
+                Private LLM Call Details
+                <span className={`ml-2 ${activeEvaluation.privateLlmSucceeded ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {activeEvaluation.privateLlmSucceeded ? 'Response received' : 'Response unavailable'}
+                </span>
+              </summary>
+              <div className="mt-2 space-y-2">
+                <div>
+                  <span className="text-slate-400 block mb-1">Prompt sent to private LLM:</span>
+                  <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-slate-900 border border-slate-800 p-2 text-slate-300">
+                    {activeEvaluation.privateLlmPrompt}
+                  </pre>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-1">Response from private LLM:</span>
+                  <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-slate-900 border border-slate-800 p-2 text-emerald-300">
+                    {activeEvaluation.privateLlmResponse || activeEvaluation.privateLlmError || 'No response returned.'}
+                  </pre>
+                </div>
+              </div>
+            </details>
+          )}
+
           {/* Domain & Significator Card */}
           {activeEvaluation.detectedDomain && (
             <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-slate-950 to-slate-900 border border-amber-700/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -401,6 +436,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
             </div>
 
             <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed space-y-2">
+              {!hasPrivateLlmResponse ? null : <>
               <div className="text-amber-300 font-bold border-b border-slate-800 pb-1 flex items-center justify-between">
                 <span>{activeEvaluation.structuredNarrative?.title || activeEvaluation.storySynopsis}</span>
                 <div className="flex items-center gap-2">
@@ -444,6 +480,7 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
                   ))}
                 </div>
               )}
+              </>}
             </div>
           </div>
 
@@ -642,20 +679,12 @@ export const ReasoningServantModal: React.FC<ReasoningServantModalProps> = ({
 
             <button
               type="button"
-              onClick={() => handleFinalSubmit(false)}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-amber-600/40 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow"
-            >
-              <FileCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Compile &amp; Merge 3-Form XML</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => handleFinalSubmit(true)}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
+              disabled={!activeEvaluation.privateLlmSucceeded}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Dispatch To Public LLM (with 3-Form XML)</span>
+              <span>Dispatch</span>
             </button>
           </div>
         </div>

@@ -565,7 +565,8 @@ export function buildBphsOutboundPrompt(
   rawNarrative: string,
   divisionalCharts: DivisionalChart[],
   customTransits?: PlanetTransitInfo[],
-  servantOverride?: ServantContextOverride
+  servantOverride?: ServantContextOverride,
+  servantEvaluationOverride?: ServantEvaluationResult
 ): OutboundPromptPayload {
   // 1. Two-Stage PII Sanitization
   const piiAudit = runTwoStageSanitization(rawNarrative);
@@ -618,7 +619,8 @@ export function buildBphsOutboundPrompt(
 
   // 6. Private LLM Reasoning Servant Intake Evaluation (Narrative Synthesized, Timeline Checked & Reasoning Formulated)
   // CRITICAL PILLARS: All Natal (D1, D9, D10), Dasha, and Gochara Transits remain 100% UNTOUCHED
-  const servantEvaluation = evaluateWithPrivateLlmServant(rawNarrative, targetDateStr);
+  const servantEvaluation =
+    servantEvaluationOverride || evaluateWithPrivateLlmServant(rawNarrative, targetDateStr);
   const validatedTimeline = servantOverride?.finalTimeline || servantEvaluation.normalizedTimeline;
   const clarificationAnswers = servantOverride?.clarificationAnswers || servantEvaluation.questions;
   const scrubbedNaCount = servantOverride?.scrubbedNaCount ?? 0;

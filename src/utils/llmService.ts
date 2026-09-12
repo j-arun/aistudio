@@ -4,7 +4,7 @@ import { saveResourceMonitorSettings } from './resourceMonitor';
 export interface PersonalLlmConfig {
   enabled: boolean;
   url: string; // e.g. "http://localhost:11434/v1"
-  model: string; // e.g. "deepseek-r1:32b"
+  model: string; // e.g. "qwen2.5:14b"
   apiKey?: string;
   pipelineRole: 'pii_sanitization' | 'edge_synthesis' | 'both';
   temperature: number;
@@ -39,7 +39,7 @@ export const DEFAULT_LLM_SETTINGS: InjectedLlmSettings = {
   personal: {
     enabled: true,
     url: 'http://localhost:11434/v1',
-    model: 'deepseek-r1:32b',
+    model: 'qwen2.5:14b',
     apiKey: '',
     pipelineRole: 'pii_sanitization',
     temperature: 0.1,
@@ -95,7 +95,7 @@ export function loadLlmSettings(): InjectedLlmSettings {
     }
 
     return {
-      personal: { ...DEFAULT_LLM_SETTINGS.personal, ...(parsed.personal || {}) },
+      personal: { ...DEFAULT_LLM_SETTINGS.personal, ...(parsed.personal || {}), model: 'qwen2.5:14b' },
       primary,
       secondary,
     };

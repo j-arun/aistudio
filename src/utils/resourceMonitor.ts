@@ -355,15 +355,12 @@ function recalculateMetrics(): void {
 export function initResourceMonitor(): void {
   if (typeof window === 'undefined') return;
   try {
-    let chosenModel = 'deepseek-r1:32b';
+    let chosenModel = 'qwen2.5:14b';
 
     // Prioritize Injected LLM settings as the canonical source for model configuration
     const llmRaw = localStorage.getItem('bphs_injected_llm_settings_v1');
     if (llmRaw) {
       const parsedLlm = JSON.parse(llmRaw);
-      if (parsedLlm?.personal?.model) {
-        chosenModel = parsedLlm.personal.model;
-      }
       if (parsedLlm?.personal?.url) {
         currentState.ollamaEndpoint = parsedLlm.personal.url.replace(/\/v1\/?$/, '').replace(/\/chat\/completions\/?$/, '');
       }
@@ -447,7 +444,7 @@ export function saveResourceMonitorSettings(updates: Partial<ResourceMonitorStat
  * Globally sets the active local model across all screens (Configuration, Observability, Servant Modal, Workbench).
  */
 export function setGlobalActiveLocalModel(modelIdOrTag: string): ModelFootprintSpec {
-  const spec = resolveModelSpec(modelIdOrTag);
+  const spec = resolveModelSpec('qwen2.5:14b');
   saveResourceMonitorSettings({
     activeModelId: spec.tag,
   });
