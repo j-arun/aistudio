@@ -9,6 +9,7 @@ import {
   HelpCircle,
   Cpu,
   ShieldCheck,
+  Database,
 } from 'lucide-react';
 import {
   ResourceMonitorState,
@@ -17,8 +18,8 @@ import {
 } from '../utils/resourceMonitor';
 
 interface HeaderProps {
-  activeTab: 'studio' | 'workbench' | 'monitor' | 'config';
-  onTabChange: (tab: 'studio' | 'workbench' | 'monitor' | 'config') => void;
+  activeTab: 'studio' | 'workbench' | 'bimtree' | 'monitor' | 'config';
+  onTabChange: (tab: 'studio' | 'workbench' | 'bimtree' | 'monitor' | 'config') => void;
   onOpenResourceMonitor: () => void;
   isResourceMonitorOpen: boolean;
   onOpenHelpDocs: () => void;
@@ -196,7 +197,23 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Workbench View</span>
           </button>
 
-          {/* Menu Item 3: Monitoring & Observability */}
+          {/* Menu Item 3: SQLite Bimtree Table */}
+          <button
+            onClick={() => onTabChange('bimtree')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'bimtree'
+                ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-slate-950 font-bold shadow-md'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 text-amber-400" />
+            <span>SQLite Bimtree</span>
+            <span className="px-1 py-0.2 rounded text-[9px] bg-slate-950/80 border border-amber-600/40 text-amber-300 font-mono">
+              729
+            </span>
+          </button>
+
+          {/* Menu Item 4: Monitoring & Observability */}
           <button
             onClick={() => onTabChange('monitor')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${

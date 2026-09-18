@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { StudioView } from './components/StudioView';
 import { WorkbenchView } from './components/WorkbenchView';
+import { BimtreeTableView } from './components/BimtreeTableView';
 import { MonitoringObservabilityView } from './components/MonitoringObservabilityView';
 import { ConfigLogsView } from './components/ConfigLogsView';
 import { ResourceMonitorModal } from './components/ResourceMonitorModal';
@@ -9,9 +10,17 @@ import { HelpDocsModal } from './components/HelpDocsModal';
 import { HoroscopeProvider } from './context/HoroscopeContext';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'studio' | 'workbench' | 'monitor' | 'config'>('studio');
+  const [activeTab, setActiveTab] = useState<'studio' | 'workbench' | 'bimtree' | 'monitor' | 'config'>('studio');
   const [isResourceMonitorOpen, setIsResourceMonitorOpen] = useState(false);
   const [isHelpDocsOpen, setIsHelpDocsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleSwitchTab = (e: any) => {
+      if (e.detail) setActiveTab(e.detail);
+    };
+    window.addEventListener('switch-tab', handleSwitchTab);
+    return () => window.removeEventListener('switch-tab', handleSwitchTab);
+  }, []);
 
   return (
     <HoroscopeProvider>
@@ -33,6 +42,10 @@ export default function App() {
 
           <div style={{ display: activeTab === 'workbench' ? 'block' : 'none' }}>
             <WorkbenchView onOpenResourceMonitor={() => setIsResourceMonitorOpen(true)} />
+          </div>
+
+          <div style={{ display: activeTab === 'bimtree' ? 'block' : 'none' }}>
+            <BimtreeTableView />
           </div>
 
           <div style={{ display: activeTab === 'monitor' ? 'block' : 'none' }}>

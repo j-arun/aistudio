@@ -12,6 +12,7 @@ import {
   ChevronsUpDown,
   ChevronsDown,
   ChevronsUp,
+  Database,
 } from 'lucide-react';
 
 export const LeftPanel: React.FC = () => {
@@ -297,8 +298,20 @@ export const LeftPanel: React.FC = () => {
 
         {isDashaOpen && (
           <div className="p-3 pt-0 border-t border-amber-900/20">
-            <div className="text-[10px] text-slate-400 mb-2">
-              MD $\rightarrow$ AD $\rightarrow$ PD • Auto-expanded to active 2026 period
+            <div className="flex items-center justify-between text-[10px] text-slate-400 mb-2">
+              <span>MD $\rightarrow$ AD $\rightarrow$ PD Tree</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'bimtree' }));
+                }}
+                className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 flex items-center gap-1 cursor-pointer transition-colors"
+                title="Open entire 729-row flat table in SQLite Explorer"
+              >
+                <Database className="w-3 h-3" />
+                <span>Open in SQLite Table</span>
+              </button>
             </div>
 
             <div className="overflow-y-auto max-h-[360px] space-y-1.5 pr-1 font-mono text-[11px] scrollbar-thin scrollbar-thumb-amber-700/40">
