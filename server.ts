@@ -2,7 +2,6 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import initSqlJs, { Database } from 'sql.js';
 
 const app = express();
 const PORT = 3000;
@@ -20,77 +19,155 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '20mb' }));
 
-// Database storage file path
+// Database storage file paths
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'astrology_bimtree.db');
+const JSON_FILE = path.join(DATA_DIR, 'astrology_bimtree.json');
 
-let serverDb: Database | null = null;
+// Interface for Bimtree period rows
+interface BimtreePeriodRow {
+  id?: number;
+  tree_id: number;
+  row_seq: number;
+  combination_code: string;
+  username: string;
+  md: string;
+  ad: string;
+  pd: string;
+  start_time: string;
+  end_time: string;
+  duration_days: number;
+  inferred_narrative: string | null;
+  lived_narrative: string | null;
+  rating: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+let serverDb: any = null;
+let sqlJsInstance: any = null;
+let isSqlJsAvailable = false;
+let inMemoryPeriods: Map<string, BimtreePeriodRow> = new Map();
+
+// Helper to save JSON store fallback
+function saveJsonStoreToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const rows = Array.from(inMemoryPeriods.values());
+    fs.writeFileSync(JSON_FILE, JSON.stringify(rows, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error saving JSON store to disk:', err);
+  }
+}
+
+// Helper to load JSON store fallback
+function loadJsonStoreFromDisk() {
+  try {
+    if (fs.existsSync(JSON_FILE)) {
+      const data = fs.readFileSync(JSON_FILE, 'utf-8');
+      const rows: BimtreePeriodRow[] = JSON.parse(data);
+      inMemoryPeriods.clear();
+      rows.forEach((r, idx) => {
+        if (!r.id) r.id = idx + 1;
+        inMemoryPeriods.set(r.combination_code, r);
+      });
+    }
+  } catch (err) {
+    console.warn('Could not read existing JSON store:', err);
+  }
+}
 
 // Initialize Database on server startup
-async function initServerDatabase(): Promise<Database> {
+async function initServerDatabase(): Promise<any> {
   if (serverDb) return serverDb;
 
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
-  const SQL = await initSqlJs();
-  let db: Database;
-
-  if (fs.existsSync(DB_FILE)) {
-    try {
-      const fileBuffer = fs.readFileSync(DB_FILE);
-      db = new SQL.Database(fileBuffer);
-    } catch (e) {
-      console.warn('Failed to open existing DB file, creating fresh DB:', e);
-      db = new SQL.Database();
-    }
-  } else {
-    db = new SQL.Database();
+  // Attempt dynamic import of sql.js so server never crashes if npm install was not yet run
+  try {
+    const importedSqlJs: any = await import('sql.js');
+    const initSql = importedSqlJs?.default || importedSqlJs;
+    sqlJsInstance = await (typeof initSql === 'function' ? initSql() : importedSqlJs());
+    isSqlJsAvailable = true;
+  } catch (err) {
+    isSqlJsAvailable = false;
+    console.warn('\n================================================================');
+    console.warn("[Notice] 'sql.js' is not yet installed in local node_modules.");
+    console.warn('Run:');
+    console.warn('  npm install');
+    console.warn('in your terminal to enable single-file SQLite .db storage.');
+    console.warn('Using local JSON storage (data/astrology_bimtree.json) in the meantime.');
+    console.warn('================================================================\n');
   }
 
-  // Ensure table schema exists
-  db.run(`
-    CREATE TABLE IF NOT EXISTS bimtree_dasha_periods (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tree_id INTEGER NOT NULL,
-      row_seq INTEGER NOT NULL,
-      combination_code TEXT NOT NULL,
-      username TEXT NOT NULL,
-      md TEXT NOT NULL,
-      ad TEXT NOT NULL,
-      pd TEXT NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      duration_days REAL,
-      inferred_narrative TEXT,
-      lived_narrative TEXT,
-      rating INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(tree_id, row_seq),
-      UNIQUE(combination_code)
-    );
+  if (isSqlJsAvailable && sqlJsInstance) {
+    let db: any;
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        const fileBuffer = fs.readFileSync(DB_FILE);
+        db = new sqlJsInstance.Database(fileBuffer);
+      } catch (e) {
+        console.warn('Failed to open existing DB file, creating fresh DB:', e);
+        db = new sqlJsInstance.Database();
+      }
+    } else {
+      db = new sqlJsInstance.Database();
+    }
 
-    CREATE INDEX IF NOT EXISTS idx_bimtree_user_tree ON bimtree_dasha_periods(username, tree_id);
-    CREATE INDEX IF NOT EXISTS idx_bimtree_timeline ON bimtree_dasha_periods(tree_id, start_time, end_time);
-    CREATE INDEX IF NOT EXISTS idx_bimtree_planets ON bimtree_dasha_periods(md, ad, pd);
-    CREATE INDEX IF NOT EXISTS idx_bimtree_rating ON bimtree_dasha_periods(rating);
-  `);
+    // Ensure table schema exists
+    db.run(`
+      CREATE TABLE IF NOT EXISTS bimtree_dasha_periods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tree_id INTEGER NOT NULL,
+        row_seq INTEGER NOT NULL,
+        combination_code TEXT NOT NULL,
+        username TEXT NOT NULL,
+        md TEXT NOT NULL,
+        ad TEXT NOT NULL,
+        pd TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        duration_days REAL,
+        inferred_narrative TEXT,
+        lived_narrative TEXT,
+        rating INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tree_id, row_seq),
+        UNIQUE(combination_code)
+      );
 
-  serverDb = db;
-  saveDatabaseToDisk();
-  return db;
+      CREATE INDEX IF NOT EXISTS idx_bimtree_user_tree ON bimtree_dasha_periods(username, tree_id);
+      CREATE INDEX IF NOT EXISTS idx_bimtree_timeline ON bimtree_dasha_periods(tree_id, start_time, end_time);
+      CREATE INDEX IF NOT EXISTS idx_bimtree_planets ON bimtree_dasha_periods(md, ad, pd);
+      CREATE INDEX IF NOT EXISTS idx_bimtree_rating ON bimtree_dasha_periods(rating);
+    `);
+
+    serverDb = db;
+    saveDatabaseToDisk();
+    return db;
+  } else {
+    // Fallback in-memory and disk JSON engine
+    loadJsonStoreFromDisk();
+    return null;
+  }
 }
 
 function saveDatabaseToDisk() {
-  if (!serverDb) return;
-  try {
-    const data = serverDb.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_FILE, buffer);
-  } catch (err) {
-    console.error('Error saving SQLite database to disk:', err);
+  if (isSqlJsAvailable && serverDb) {
+    try {
+      const data = serverDb.export();
+      const buffer = Buffer.from(data);
+      fs.writeFileSync(DB_FILE, buffer);
+    } catch (err) {
+      console.error('Error saving SQLite database to disk:', err);
+    }
+  } else {
+    saveJsonStoreToDisk();
   }
 }
 
@@ -149,197 +226,125 @@ CREATE INDEX IF NOT EXISTS idx_bimtree_embedding ON bimtree_dasha_periods USING 
   });
 });
 
-// 3. List All Trees / Querents
-app.get('/api/bimtree/trees', async (req: Request, res: Response) => {
-  try {
-    const db = await initServerDatabase();
-    const result = db.exec(`
-      SELECT 
-        tree_id,
-        username,
-        COUNT(*) as total_periods,
-        SUM(CASE WHEN inferred_narrative IS NOT NULL AND inferred_narrative != '' THEN 1 ELSE 0 END) as inferred_count,
-        SUM(CASE WHEN lived_narrative IS NOT NULL AND lived_narrative != '' THEN 1 ELSE 0 END) as lived_count,
-        ROUND(AVG(rating), 2) as avg_rating,
-        MIN(start_time) as earliest_date,
-        MAX(end_time) as latest_date
-      FROM bimtree_dasha_periods
-      GROUP BY tree_id, username
-      ORDER BY tree_id ASC
-    `);
+// -------------------------------------------------------------
+// STORAGE HELPERS (Supports SQLite WASM and JSON Fallback)
+// -------------------------------------------------------------
 
-    if (result.length === 0) {
-      return res.json({ trees: [] });
+function getAllPeriodsList(): BimtreePeriodRow[] {
+  if (isSqlJsAvailable && serverDb) {
+    try {
+      const res = serverDb.exec(
+        `SELECT id, tree_id, row_seq, combination_code, username, md, ad, pd, start_time, end_time, duration_days, inferred_narrative, lived_narrative, rating, created_at, updated_at FROM bimtree_dasha_periods ORDER BY tree_id ASC, row_seq ASC`
+      );
+      if (res.length === 0) return [];
+      return res[0].values.map((v: any[]) => ({
+        id: Number(v[0]),
+        tree_id: Number(v[1]),
+        row_seq: Number(v[2]),
+        combination_code: String(v[3]),
+        username: String(v[4]),
+        md: String(v[5]),
+        ad: String(v[6]),
+        pd: String(v[7]),
+        start_time: String(v[8]),
+        end_time: String(v[9]),
+        duration_days: Number(v[10]),
+        inferred_narrative: v[11] ? String(v[11]) : null,
+        lived_narrative: v[12] ? String(v[12]) : null,
+        rating: v[13] !== null ? Number(v[13]) : null,
+        created_at: String(v[14]),
+        updated_at: String(v[15]),
+      }));
+    } catch (e) {
+      console.error('Error querying SQLite periods:', e);
+      return Array.from(inMemoryPeriods.values());
     }
-
-    const trees = result[0].values.map((v) => ({
-      tree_id: Number(v[0]),
-      username: String(v[1]),
-      total_periods: Number(v[2]),
-      inferred_count: Number(v[3] || 0),
-      lived_count: Number(v[4] || 0),
-      avg_rating: v[5] !== null ? Number(v[5]) : null,
-      earliest_date: String(v[6]),
-      latest_date: String(v[7]),
-    }));
-
-    res.json({ trees });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Failed to list trees' });
+  } else {
+    return Array.from(inMemoryPeriods.values()).sort((a, b) =>
+      a.tree_id === b.tree_id ? a.row_seq - b.row_seq : a.tree_id - b.tree_id
+    );
   }
-});
+}
 
-// 4. Query Periods (with filters: tree_id, md, ad, pd, date, rating, status, search, pagination)
-app.get('/api/bimtree/periods', async (req: Request, res: Response) => {
-  try {
-    const db = await initServerDatabase();
-    const { tree_id, md, ad, pd, date, min_rating, status, search, limit = '100', offset = '0' } = req.query;
-
-    const conditions: string[] = [];
-    if (tree_id) conditions.push(`tree_id = ${Number(tree_id)}`);
-    if (md) conditions.push(`md = '${String(md).replace(/'/g, "''")}'`);
-    if (ad) conditions.push(`ad = '${String(ad).replace(/'/g, "''")}'`);
-    if (pd) conditions.push(`pd = '${String(pd).replace(/'/g, "''")}'`);
-    if (date) {
-      const dt = String(date).replace(/'/g, "''");
-      conditions.push(`'${dt}' >= start_time AND '${dt}' <= end_time`);
+function getPeriodByCode(code: string): BimtreePeriodRow | null {
+  if (isSqlJsAvailable && serverDb) {
+    try {
+      const cleanCode = code.replace(/'/g, "''");
+      const res = serverDb.exec(
+        `SELECT id, tree_id, row_seq, combination_code, username, md, ad, pd, start_time, end_time, duration_days, inferred_narrative, lived_narrative, rating, created_at, updated_at FROM bimtree_dasha_periods WHERE combination_code = '${cleanCode}' LIMIT 1`
+      );
+      if (res.length === 0 || res[0].values.length === 0) return null;
+      const v = res[0].values[0];
+      return {
+        id: Number(v[0]),
+        tree_id: Number(v[1]),
+        row_seq: Number(v[2]),
+        combination_code: String(v[3]),
+        username: String(v[4]),
+        md: String(v[5]),
+        ad: String(v[6]),
+        pd: String(v[7]),
+        start_time: String(v[8]),
+        end_time: String(v[9]),
+        duration_days: Number(v[10]),
+        inferred_narrative: v[11] ? String(v[11]) : null,
+        lived_narrative: v[12] ? String(v[12]) : null,
+        rating: v[13] !== null ? Number(v[13]) : null,
+        created_at: String(v[14]),
+        updated_at: String(v[15]),
+      };
+    } catch {
+      return inMemoryPeriods.get(code) || null;
     }
-    if (min_rating) conditions.push(`rating >= ${Number(min_rating)}`);
-
-    if (status === 'has_inferred') {
-      conditions.push(`inferred_narrative IS NOT NULL AND inferred_narrative != ''`);
-    } else if (status === 'has_lived') {
-      conditions.push(`lived_narrative IS NOT NULL AND lived_narrative != ''`);
-    } else if (status === 'unannotated') {
-      conditions.push(`(inferred_narrative IS NULL OR inferred_narrative = '') AND (lived_narrative IS NULL OR lived_narrative = '')`);
-    } else if (status === 'rated') {
-      conditions.push(`rating IS NOT NULL`);
-    }
-
-    if (search) {
-      const s = String(search).replace(/'/g, "''");
-      conditions.push(`(combination_code LIKE '%${s}%' OR inferred_narrative LIKE '%${s}%' OR lived_narrative LIKE '%${s}%' OR md LIKE '%${s}%' OR ad LIKE '%${s}%' OR pd LIKE '%${s}%')`);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const countRes = db.exec(`SELECT COUNT(*) FROM bimtree_dasha_periods ${whereClause}`);
-    const total = countRes.length > 0 ? Number(countRes[0].values[0][0]) : 0;
-
-    const query = `
-      SELECT 
-        id, tree_id, row_seq, combination_code, username, md, ad, pd,
-        start_time, end_time, duration_days, inferred_narrative, lived_narrative, rating,
-        created_at, updated_at
-      FROM bimtree_dasha_periods
-      ${whereClause}
-      ORDER BY tree_id ASC, row_seq ASC
-      LIMIT ${Number(limit)} OFFSET ${Number(offset)}
-    `;
-
-    const resData = db.exec(query);
-    const periods = resData.length > 0
-      ? resData[0].values.map((v) => ({
-          id: Number(v[0]),
-          tree_id: Number(v[1]),
-          row_seq: Number(v[2]),
-          combination_code: String(v[3]),
-          username: String(v[4]),
-          md: String(v[5]),
-          ad: String(v[6]),
-          pd: String(v[7]),
-          start_time: String(v[8]),
-          end_time: String(v[9]),
-          duration_days: Number(v[10]),
-          inferred_narrative: v[11] ? String(v[11]) : null,
-          lived_narrative: v[12] ? String(v[12]) : null,
-          rating: v[13] !== null ? Number(v[13]) : null,
-          created_at: String(v[14]),
-          updated_at: String(v[15]),
-        }))
-      : [];
-
-    res.json({ total, count: periods.length, periods });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Query failed' });
+  } else {
+    return inMemoryPeriods.get(code) || null;
   }
-});
+}
 
-// 5. Get Single Combination by Code
-app.get('/api/bimtree/periods/:code', async (req: Request, res: Response) => {
-  try {
-    const db = await initServerDatabase();
-    const code = req.params.code.replace(/'/g, "''");
-    const result = db.exec(`SELECT * FROM bimtree_dasha_periods WHERE combination_code = '${code}' LIMIT 1`);
-
-    if (result.length === 0 || result[0].values.length === 0) {
-      return res.status(404).json({ error: `Combination code ${req.params.code} not found` });
-    }
-
-    const cols = result[0].columns;
-    const row = result[0].values[0];
-    const period: Record<string, any> = {};
-    cols.forEach((col, idx) => {
-      period[col] = row[idx];
-    });
-
-    res.json({ period });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Lookup failed' });
-  }
-});
-
-// 6. Update Narrative & Rating for a Combination Code
-app.patch('/api/bimtree/periods/:code', async (req: Request, res: Response) => {
-  try {
-    const db = await initServerDatabase();
-    const code = req.params.code;
-    const { inferred_narrative, lived_narrative, rating } = req.body;
-
+function updatePeriodInDb(
+  code: string,
+  fields: { inferred_narrative?: string | null; lived_narrative?: string | null; rating?: number | null }
+): boolean {
+  const now = new Date().toISOString();
+  if (isSqlJsAvailable && serverDb) {
     const updates: string[] = ['updated_at = CURRENT_TIMESTAMP'];
     const params: any[] = [];
-
-    if (inferred_narrative !== undefined) {
+    if (fields.inferred_narrative !== undefined) {
       updates.push('inferred_narrative = ?');
-      params.push(inferred_narrative ? String(inferred_narrative).slice(0, 2000) : null);
+      params.push(fields.inferred_narrative ? String(fields.inferred_narrative).slice(0, 2000) : null);
     }
-    if (lived_narrative !== undefined) {
+    if (fields.lived_narrative !== undefined) {
       updates.push('lived_narrative = ?');
-      params.push(lived_narrative ? String(lived_narrative).slice(0, 2000) : null);
+      params.push(fields.lived_narrative ? String(fields.lived_narrative).slice(0, 2000) : null);
     }
-    if (rating !== undefined) {
+    if (fields.rating !== undefined) {
       updates.push('rating = ?');
-      params.push(rating === null ? null : Math.max(1, Math.min(5, Number(rating))));
+      params.push(fields.rating === null ? null : Math.max(1, Math.min(5, Number(fields.rating))));
     }
-
     params.push(code);
-
-    db.run(
-      `UPDATE bimtree_dasha_periods SET ${updates.join(', ')} WHERE combination_code = ?`,
-      params
-    );
-
+    serverDb.run(`UPDATE bimtree_dasha_periods SET ${updates.join(', ')} WHERE combination_code = ?`, params);
     saveDatabaseToDisk();
-    res.json({ success: true, message: `Updated combination ${code}`, updated_code: code });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Update failed' });
+    return true;
+  } else {
+    const existing = inMemoryPeriods.get(code);
+    if (!existing) return false;
+    if (fields.inferred_narrative !== undefined) existing.inferred_narrative = fields.inferred_narrative;
+    if (fields.lived_narrative !== undefined) existing.lived_narrative = fields.lived_narrative;
+    if (fields.rating !== undefined) existing.rating = fields.rating;
+    existing.updated_at = now;
+    inMemoryPeriods.set(code, existing);
+    saveJsonStoreToDisk();
+    return true;
   }
-});
+}
 
-// 7. Bulk Insert / Ingest Periods
-app.post('/api/bimtree/periods', async (req: Request, res: Response) => {
-  try {
-    const db = await initServerDatabase();
-    const { rows } = req.body;
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return res.status(400).json({ error: 'Body must include an array of rows: { rows: [...] }' });
-    }
-
-    db.run('BEGIN TRANSACTION;');
+function bulkInsertInDb(rows: BimtreePeriodRow[]): void {
+  const now = new Date().toISOString();
+  if (isSqlJsAvailable && serverDb) {
+    serverDb.run('BEGIN TRANSACTION;');
     try {
       for (const r of rows) {
-        db.run(
+        serverDb.run(
           `INSERT OR REPLACE INTO bimtree_dasha_periods 
            (tree_id, row_seq, combination_code, username, md, ad, pd, start_time, end_time, duration_days, inferred_narrative, lived_narrative, rating)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -360,13 +365,238 @@ app.post('/api/bimtree/periods', async (req: Request, res: Response) => {
           ]
         );
       }
-      db.run('COMMIT;');
+      serverDb.run('COMMIT;');
       saveDatabaseToDisk();
-      res.json({ success: true, count: rows.length, message: `Inserted/Updated ${rows.length} periods` });
     } catch (txErr) {
-      db.run('ROLLBACK;');
+      serverDb.run('ROLLBACK;');
       throw txErr;
     }
+  } else {
+    rows.forEach((r, idx) => {
+      const existing = inMemoryPeriods.get(r.combination_code) || {};
+      inMemoryPeriods.set(r.combination_code, {
+        ...existing,
+        ...r,
+        id: r.id || idx + 1,
+        created_at: r.created_at || now,
+        updated_at: now,
+      });
+    });
+    saveJsonStoreToDisk();
+  }
+}
+
+function getTreesSummaryInDb() {
+  const all = getAllPeriodsList();
+  const map = new Map<string, any>();
+  for (const p of all) {
+    const key = `${p.tree_id}_${p.username}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        tree_id: p.tree_id,
+        username: p.username,
+        total_periods: 0,
+        inferred_count: 0,
+        lived_count: 0,
+        rating_sum: 0,
+        rating_count: 0,
+        earliest_date: p.start_time,
+        latest_date: p.end_time,
+      });
+    }
+    const item = map.get(key);
+    item.total_periods += 1;
+    if (p.inferred_narrative && p.inferred_narrative.trim().length > 0) item.inferred_count += 1;
+    if (p.lived_narrative && p.lived_narrative.trim().length > 0) item.lived_count += 1;
+    if (p.rating !== null && p.rating !== undefined) {
+      item.rating_sum += p.rating;
+      item.rating_count += 1;
+    }
+    if (p.start_time < item.earliest_date) item.earliest_date = p.start_time;
+    if (p.end_time > item.latest_date) item.latest_date = p.end_time;
+  }
+  return Array.from(map.values()).map((v) => ({
+    tree_id: v.tree_id,
+    username: v.username,
+    total_periods: v.total_periods,
+    inferred_count: v.inferred_count,
+    lived_count: v.lived_count,
+    avg_rating: v.rating_count > 0 ? Number((v.rating_sum / v.rating_count).toFixed(2)) : null,
+    earliest_date: v.earliest_date,
+    latest_date: v.latest_date,
+  }));
+}
+
+function queryPeriodsInDb(filters: any) {
+  let all = getAllPeriodsList();
+  if (filters.tree_id) all = all.filter((p) => p.tree_id === Number(filters.tree_id));
+  if (filters.md) all = all.filter((p) => p.md.toLowerCase() === String(filters.md).toLowerCase());
+  if (filters.ad) all = all.filter((p) => p.ad.toLowerCase() === String(filters.ad).toLowerCase());
+  if (filters.pd) all = all.filter((p) => p.pd.toLowerCase() === String(filters.pd).toLowerCase());
+  if (filters.date) {
+    const dt = String(filters.date);
+    all = all.filter((p) => dt >= p.start_time && dt <= p.end_time);
+  }
+  if (filters.min_rating) {
+    all = all.filter((p) => p.rating !== null && p.rating >= Number(filters.min_rating));
+  }
+  if (filters.status === 'has_inferred') {
+    all = all.filter((p) => Boolean(p.inferred_narrative && p.inferred_narrative.trim().length > 0));
+  } else if (filters.status === 'has_lived') {
+    all = all.filter((p) => Boolean(p.lived_narrative && p.lived_narrative.trim().length > 0));
+  } else if (filters.status === 'unannotated') {
+    all = all.filter(
+      (p) =>
+        (!p.inferred_narrative || !p.inferred_narrative.trim()) &&
+        (!p.lived_narrative || !p.lived_narrative.trim())
+    );
+  } else if (filters.status === 'rated') {
+    all = all.filter((p) => p.rating !== null && p.rating !== undefined);
+  }
+
+  if (filters.search) {
+    const s = String(filters.search).toLowerCase();
+    all = all.filter(
+      (p) =>
+        p.combination_code.toLowerCase().includes(s) ||
+        (p.inferred_narrative && p.inferred_narrative.toLowerCase().includes(s)) ||
+        (p.lived_narrative && p.lived_narrative.toLowerCase().includes(s)) ||
+        p.md.toLowerCase().includes(s) ||
+        p.ad.toLowerCase().includes(s) ||
+        p.pd.toLowerCase().includes(s)
+    );
+  }
+
+  const total = all.length;
+  const limit = Number(filters.limit || 100);
+  const offset = Number(filters.offset || 0);
+  const paginated = all.slice(offset, offset + limit);
+
+  return { total, count: paginated.length, periods: paginated };
+}
+
+// -------------------------------------------------------------
+// REST API ROUTES
+// -------------------------------------------------------------
+
+// 1. Health & Service Identification
+app.get('/api/health', (req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    service: 'Rooster Vimshottari Bimtree REST Gateway',
+    version: '1.0.0',
+    port: PORT,
+    engine: isSqlJsAvailable ? 'SQLite (sql.js WASM Engine)' : 'JSON File Store (Run npm install for SQLite)',
+    capabilities: ['Read', 'Write', 'Query', 'RAG Vector Spec', 'Export DB', 'Export SQL'],
+  });
+});
+
+// 2. Schema Specification (PostgreSQL + SQLite + RAG pgvector)
+app.get('/api/bimtree/schema', (req: Request, res: Response) => {
+  const pgSchema = `
+-- PostgreSQL Schema with pgvector for RAG
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS bimtree_dasha_periods (
+  id SERIAL PRIMARY KEY,
+  tree_id INTEGER NOT NULL,
+  row_seq INTEGER NOT NULL,
+  combination_code VARCHAR(32) NOT NULL UNIQUE,
+  username VARCHAR(64) NOT NULL,
+  md VARCHAR(32) NOT NULL,
+  ad VARCHAR(32) NOT NULL,
+  pd VARCHAR(32) NOT NULL,
+  start_time TIMESTAMP NOT NULL,
+  end_time TIMESTAMP NOT NULL,
+  duration_days NUMERIC(10, 2),
+  inferred_narrative TEXT,
+  lived_narrative TEXT,
+  rating SMALLINT CHECK (rating BETWEEN 1 AND 5),
+  embedding vector(768), -- For RAG semantic vector similarity search
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tree_id, row_seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bimtree_user_tree ON bimtree_dasha_periods(username, tree_id);
+CREATE INDEX IF NOT EXISTS idx_bimtree_timeline ON bimtree_dasha_periods(tree_id, start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_bimtree_planets ON bimtree_dasha_periods(md, ad, pd);
+CREATE INDEX IF NOT EXISTS idx_bimtree_embedding ON bimtree_dasha_periods USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+`;
+
+  res.json({
+    postgresql: pgSchema,
+    ragNotes: 'To perform RAG queries in PostgreSQL: query using `ORDER BY embedding <=> query_vector LIMIT 5;`',
+  });
+});
+
+// 3. List All Trees / Querents
+app.get('/api/bimtree/trees', async (req: Request, res: Response) => {
+  try {
+    await initServerDatabase();
+    const trees = getTreesSummaryInDb();
+    res.json({ trees });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to list trees' });
+  }
+});
+
+// 4. Query Periods (with filters: tree_id, md, ad, pd, date, rating, status, search, pagination)
+app.get('/api/bimtree/periods', async (req: Request, res: Response) => {
+  try {
+    await initServerDatabase();
+    const result = queryPeriodsInDb(req.query);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Query failed' });
+  }
+});
+
+// 5. Get Single Combination by Code
+app.get('/api/bimtree/periods/:code', async (req: Request, res: Response) => {
+  try {
+    await initServerDatabase();
+    const period = getPeriodByCode(req.params.code);
+    if (!period) {
+      return res.status(404).json({ error: `Combination code ${req.params.code} not found` });
+    }
+    res.json({ period });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Lookup failed' });
+  }
+});
+
+// 6. Update Narrative & Rating for a Combination Code
+app.patch('/api/bimtree/periods/:code', async (req: Request, res: Response) => {
+  try {
+    await initServerDatabase();
+    const code = req.params.code;
+    const { inferred_narrative, lived_narrative, rating } = req.body;
+
+    const updated = updatePeriodInDb(code, { inferred_narrative, lived_narrative, rating });
+    if (!updated) {
+      // If row not found in fallback, we create it
+      updatePeriodInDb(code, { inferred_narrative, lived_narrative, rating });
+    }
+
+    res.json({ success: true, message: `Updated combination ${code}`, updated_code: code });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Update failed' });
+  }
+});
+
+// 7. Bulk Insert / Ingest Periods
+app.post('/api/bimtree/periods', async (req: Request, res: Response) => {
+  try {
+    await initServerDatabase();
+    const { rows } = req.body;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'Body must include an array of rows: { rows: [...] }' });
+    }
+
+    bulkInsertInDb(rows);
+    res.json({ success: true, count: rows.length, message: `Inserted/Updated ${rows.length} periods` });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Bulk insert failed' });
   }
@@ -375,29 +605,23 @@ app.post('/api/bimtree/periods', async (req: Request, res: Response) => {
 // 8. RAG Retrieval Endpoint (Contextual retrieval for LLM prompt augmentation)
 app.post('/api/bimtree/rag/query', async (req: Request, res: Response) => {
   try {
-    const db = await initServerDatabase();
+    await initServerDatabase();
     const { query, tree_id, top_k = 5, min_rating } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Must provide query string' });
     }
 
-    const treeFilter = tree_id ? `AND tree_id = ${Number(tree_id)}` : '';
-    const ratingFilter = min_rating ? `AND rating >= ${Number(min_rating)}` : '';
+    let candidates = getAllPeriodsList().filter(
+      (p) =>
+        (p.inferred_narrative && p.inferred_narrative.trim().length > 0) ||
+        (p.lived_narrative && p.lived_narrative.trim().length > 0)
+    );
 
-    // Fetch periods that have narratives
-    const sql = `
-      SELECT combination_code, username, md, ad, pd, start_time, end_time, duration_days, inferred_narrative, lived_narrative, rating
-      FROM bimtree_dasha_periods
-      WHERE ((inferred_narrative IS NOT NULL AND inferred_narrative != '') OR (lived_narrative IS NOT NULL AND lived_narrative != ''))
-      ${treeFilter}
-      ${ratingFilter}
-      ORDER BY rating DESC NULLS LAST, row_seq ASC
-      LIMIT 100
-    `;
+    if (tree_id) candidates = candidates.filter((p) => p.tree_id === Number(tree_id));
+    if (min_rating) candidates = candidates.filter((p) => p.rating !== null && p.rating >= Number(min_rating));
 
-    const resData = db.exec(sql);
-    if (resData.length === 0) {
+    if (candidates.length === 0) {
       return res.json({
         query,
         matches: [],
@@ -411,39 +635,19 @@ app.post('/api/bimtree/rag/query', async (req: Request, res: Response) => {
       .split(/\s+/)
       .filter((w) => w.length > 2);
 
-    const scored = resData[0].values.map((v) => {
-      const code = String(v[0]);
-      const user = String(v[1]);
-      const md = String(v[2]);
-      const ad = String(v[3]);
-      const pd = String(v[4]);
-      const start = String(v[5]);
-      const end = String(v[6]);
-      const duration = Number(v[7]);
-      const inferred = v[8] ? String(v[8]) : '';
-      const lived = v[9] ? String(v[9]) : '';
-      const rating = v[10] !== null ? Number(v[10]) : null;
-
-      const fullText = `${code} ${md} ${ad} ${pd} ${inferred} ${lived}`.toLowerCase();
+    const scored = candidates.map((p) => {
+      const fullText = `${p.combination_code} ${p.md} ${p.ad} ${p.pd} ${p.inferred_narrative || ''} ${
+        p.lived_narrative || ''
+      }`.toLowerCase();
       let matchScore = 0;
       queryTokens.forEach((t) => {
         if (fullText.includes(t)) matchScore += 1;
       });
 
-      if (rating) matchScore += rating * 0.2;
+      if (p.rating) matchScore += p.rating * 0.2;
 
       return {
-        combination_code: code,
-        username: user,
-        md,
-        ad,
-        pd,
-        start_time: start,
-        end_time: end,
-        duration_days: duration,
-        inferred_narrative: inferred,
-        lived_narrative: lived,
-        rating,
+        ...p,
         relevance_score: matchScore,
       };
     });
@@ -477,14 +681,21 @@ ${m.lived_narrative || 'None'}
   }
 });
 
-// 9. Database Backup Export (.db binary download)
+// 9. Database Backup Export (.db binary download or JSON export)
 app.get('/api/bimtree/export/db', async (req: Request, res: Response) => {
   try {
-    const db = await initServerDatabase();
-    const data = db.export();
-    res.setHeader('Content-Type', 'application/x-sqlite3');
-    res.setHeader('Content-Disposition', 'attachment; filename="astrology_bimtree.db"');
-    res.send(Buffer.from(data));
+    await initServerDatabase();
+    if (isSqlJsAvailable && serverDb) {
+      const data = serverDb.export();
+      res.setHeader('Content-Type', 'application/x-sqlite3');
+      res.setHeader('Content-Disposition', 'attachment; filename="astrology_bimtree.db"');
+      res.send(Buffer.from(data));
+    } else {
+      const json = JSON.stringify(Array.from(inMemoryPeriods.values()), null, 2);
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="astrology_bimtree.json"');
+      res.send(json);
+    }
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Export failed' });
   }
